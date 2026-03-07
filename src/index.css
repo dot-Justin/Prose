@@ -1,0 +1,68 @@
+:root {
+  --color-bg:           #0f0e0d;
+  --color-surface:      #1a1815;
+  --color-surface-2:    #242220;
+  --color-border:       #2e2c29;
+  --color-text:         #f5f0eb;
+  --color-text-muted:   #8a8480;
+  --color-text-subtle:  #5a5855;
+  --color-accent:       #c9974a;
+  --color-accent-hover: #d4a55e;
+  --color-accent-dim:   rgba(201, 151, 74, 0.12);
+  --color-green:        #4caf7d;
+  --color-green-dim:    rgba(76, 175, 125, 0.12);
+  --color-yellow:       #d4a53a;
+  --color-red:          #c95a4a;
+  --color-red-dim:      rgba(201, 90, 74, 0.12);
+
+  --font-ui:   'Instrument Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  --sidebar-width:  240px;
+  --sidebar-collapsed: 52px;
+  --artifact-width: 340px;
+
+  --timeline-line-color: var(--color-border);
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-subtle);
+}
+
+/* Reset Chakra portal/overlay defaults */
+[data-scope="dialog"][data-part="backdrop"] {
+  background: rgba(0, 0, 0, 0.7) !important;
+  backdrop-filter: blur(2px);
+}
