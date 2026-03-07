@@ -44,3 +44,7 @@ test-results/
 # system files
 .DS_Store
 Thumbs.db
+
+# runtime data
+data/
+

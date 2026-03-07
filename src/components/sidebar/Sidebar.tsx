@@ -2,14 +2,28 @@ import { useState } from 'react'
 import { Session } from '../../types'
 import { SessionListItem } from './SessionListItem'
 
+const iconBtnStyle: React.CSSProperties = {
+  background: 'none',
+  border: 'none',
+  cursor: 'pointer',
+  color: 'var(--color-text-subtle)',
+  padding: '5px 7px',
+  borderRadius: '4px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '5px',
+  transition: 'color 0.12s',
+}
+
 interface Props {
   sessions: Session[]
   activeSessionId: string | null
   onSelectSession: (id: string) => void
   onNewSession: () => void
+  onOpenSettings: () => void
 }
 
-export function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession }: Props) {
+export function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onOpenSettings }: Props) {
   const [collapsed, setCollapsed] = useState(false)
 
   return (
@@ -118,28 +132,33 @@ export function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSessi
         )}
       </div>
 
-      {/* Collapse toggle */}
+      {/* Bottom bar: settings + collapse */}
       <div style={{
-        padding: '12px 0',
+        padding: '8px',
         display: 'flex',
-        justifyContent: 'center',
+        justifyContent: collapsed ? 'center' : 'space-between',
+        alignItems: 'center',
         borderTop: '1px solid var(--color-border)',
         flexShrink: 0,
+        gap: '4px',
       }}>
+        <button
+          onClick={onOpenSettings}
+          title="Settings"
+          style={iconBtnStyle}
+          onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-text-muted)')}
+          onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text-subtle)')}
+        >
+          <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
+            <path d="M7.5 9.5a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" strokeWidth="1.3"/>
+            <path d="M12.1 8.8l.9.5a.5.5 0 01.2.7l-1 1.7a.5.5 0 01-.7.2l-.9-.5c-.4.3-.9.5-1.4.7l-.1 1a.5.5 0 01-.5.4H7.4a.5.5 0 01-.5-.4l-.1-1c-.5-.2-1-.4-1.4-.7l-.9.5a.5.5 0 01-.7-.2l-1-1.7a.5.5 0 01.2-.7l.9-.5V6.2l-.9-.5a.5.5 0 01-.2-.7l1-1.7a.5.5 0 01.7-.2l.9.5c.4-.3.9-.5 1.4-.7l.1-1A.5.5 0 017.4 1.5h2a.5.5 0 01.5.4l.1 1c.5.2 1 .4 1.4.7l.9-.5a.5.5 0 01.7.2l1 1.7a.5.5 0 01-.2.7l-.9.5v2.6z" stroke="currentColor" strokeWidth="1.3"/>
+          </svg>
+          {!collapsed && <span style={{ fontSize: '11px', fontFamily: 'var(--font-ui)' }}>Settings</span>}
+        </button>
         <button
           onClick={() => setCollapsed(c => !c)}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          style={{
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            color: 'var(--color-text-subtle)',
-            padding: '4px 8px',
-            borderRadius: '4px',
-            display: 'flex',
-            alignItems: 'center',
-            transition: 'color 0.12s',
-          }}
+          style={iconBtnStyle}
           onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-text-muted)')}
           onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text-subtle)')}
         >
