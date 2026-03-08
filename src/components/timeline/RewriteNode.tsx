@@ -66,7 +66,10 @@ export function RewriteNode({ node, index }: Props) {
           letterSpacing: '0.08em',
           marginBottom: '10px',
         }}>
-          Rewrite — {pairs.length} sentence{pairs.length !== 1 ? 's' : ''}
+          {node.isFullPass
+            ? 'Full-text humanization pass'
+            : `Rewrite — ${pairs.length} sentence${pairs.length !== 1 ? 's' : ''}`
+          }
         </div>
 
         {pairs.map((pair, i) => (

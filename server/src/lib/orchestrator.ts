@@ -1,12 +1,13 @@
 import { randomUUID } from 'crypto'
 import { Emitter } from './sse'
 import { Settings, StoredSession, StoredRevision, saveSession } from './storage'
-import { isClaudeAuthError, loadSkillMd, rewriteSentence } from './claude'
+import { isClaudeAuthError, loadSkillMd, rewriteSentence, rewriteFullText } from './claude'
 import {
   runAllDetectors,
   aggregate,
   toFrontendResults,
   pickTopNSentences,
+  splitIntoSentences,
   DetectorResult,
 } from './detectors/index'
 
@@ -113,8 +114,101 @@ export async function runOrchestrator(
   const revertCounts = new Map<string, number>()
   const attemptCounts = new Map<string, number>()
   const previousRewrites = new Map<string, string[]>()
+  let stallCount = 0
 
   for (let i = 1; i <= maxRevisions; i++) {
+    // ── Full-text pass when stalled ──────────────────────────────────────────
+    if (stallCount >= 2) {
+      emitRunning(`Iteration ${i} — running full-text humanization pass…`)
+      stallCount = 0
+
+      const currentAgg = aggregate(lastResults, outliers)
+      let newFullText = workingText
+      try {
+        newFullText = await rewriteFullText(workingText, currentAgg, style, requirements, skillMd, settings)
+      } catch (_err) {
+        // fall through to normal sentence pass
+      }
+
+      if (newFullText !== workingText) {
+        const oldSents = splitIntoSentences(workingText)
+        const newSents = splitIntoSentences(newFullText)
+        const changedPairs = oldSents
+          .map((s, idx) => ({ original: s, rewritten: newSents[idx] ?? s, pattern: 'Full-text pass' }))
+          .filter(p => p.original !== p.rewritten)
+
+        emitNode('REWRITE', { rewrites: changedPairs, isFullPass: true })
+
+        emitRunning(`Iteration ${i} — re-detecting…`)
+        const newResults = await runAllDetectors(newFullText, enabledDetectors)
+        const newAgg2 = aggregate(newResults, outliers)
+        const oldAgg2 = aggregate(lastResults, outliers)
+        const fullPassKept = newAgg2 < oldAgg2
+
+        const deltas2 = lastResults
+          .filter(r => !outliers.has(r.name) && r.score !== null)
+          .map(r => {
+            const after = newResults.find(n => n.name === r.name)
+            return { detector: r.name, before: Math.round(r.score ?? 0), after: Math.round(after?.score ?? r.score ?? 0) }
+          })
+        const improved2 = deltas2.filter(d => d.after < d.before).length
+        const worsened2 = deltas2.filter(d => d.after > d.before).length
+        emitNode('REDETECT_RESULT', { deltas: deltas2, kept: fullPassKept, summary: `${improved2} improved, ${worsened2} worsened` })
+
+        if (fullPassKept) {
+          workingText = newFullText
+          lastResults = newResults
+          totalRewrites += changedPairs.length
+          const afterScore2 = aggregate(lastResults, outliers)
+          session.revisions.push({
+            label: `Rev ${revNum++} — ${Math.round(prevAggScore)}% → ${Math.round(afterScore2)}%`,
+            text: workingText,
+            changedSentences: changedPairs.map(p => p.rewritten),
+          })
+          prevAggScore = afterScore2
+          bestScore = Math.min(bestScore, afterScore2)
+        }
+
+        // Outlier + pass check after full-text pass
+        for (const result of lastResults) {
+          if (outliers.has(result.name) || result.skipped || result.score === null) continue
+          const othersAllPass = lastResults
+            .filter(r => r.name !== result.name && !outliers.has(r.name) && !r.skipped && r.score !== null)
+            .every(r => (r.score ?? 0) <= targetDetectionPct)
+          if (result.score > targetDetectionPct && othersAllPass) {
+            const streak = (failStreak.get(result.name) ?? 0) + 1
+            failStreak.set(result.name, streak)
+            if (streak >= 3) {
+              outliers.add(result.name)
+              emitNode('OUTLIER_IGNORED', {
+                detectorName: result.name,
+                reason: `Stuck above ${targetDetectionPct}% for 3 iterations while all others passed`,
+              })
+            }
+          } else {
+            failStreak.set(result.name, 0)
+          }
+        }
+        const activeAfterFull = lastResults.filter(r => !outliers.has(r.name) && !r.skipped && r.score !== null)
+        const scoreAfterFull = aggregate(lastResults, outliers)
+        bestScore = Math.min(bestScore, scoreAfterFull)
+        if (activeAfterFull.every(r => (r.score ?? 0) <= targetDetectionPct)) {
+          emitNode('SESSION_COMPLETE', {
+            passed: true,
+            beforeResults: toFrontendResults(beforeResults, targetDetectionPct),
+            afterResults: toFrontendResults(lastResults, targetDetectionPct, outliers),
+            totalRewrites,
+            finalScore: Math.round(scoreAfterFull),
+          })
+          session.status = 'complete-pass'
+          session.overallScore = Math.round(scoreAfterFull)
+          saveSession(session)
+          return
+        }
+      }
+      continue
+    }
+
     emitRunning(`Iteration ${i} — selecting target sentences…`)
 
     const skipSentences = new Set(
@@ -225,7 +319,13 @@ export async function runOrchestrator(
       }
     }
 
+    if (!kept) {
+      stallCount++
+    }
+
     if (kept) {
+      const improvement = oldAgg - newAgg
+      stallCount = improvement < 3 ? stallCount + 1 : 0
       workingText = candidateText
       lastResults = newResults
       const changedSentences = rewrites.filter(r => r.rewritten !== r.original).map(r => r.rewritten)

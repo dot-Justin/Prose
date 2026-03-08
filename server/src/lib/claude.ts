@@ -120,6 +120,43 @@ async function withRateLimitRetry<T>(fn: () => Promise<T>, maxRetries = 3): Prom
   throw new Error('unreachable')
 }
 
+export async function rewriteFullText(
+  workingText: string,
+  currentScore: number,
+  style: string,
+  requirements: string,
+  skillMd: string,
+  settings: Settings,
+): Promise<string> {
+  const client = makeClient(settings)
+  const lines = [
+    `This text scores ~${Math.round(currentScore)}% on AI detectors. Apply ALL humanizer patterns to rewrite it completely. Be aggressive:`,
+    '',
+    '- Vary sentence length drastically — some very short, some longer',
+    '- Replace ALL AI vocabulary: utilize, leverage, delve, showcase, pivotal, crucial, additionally, underscore, tapestry, testament, highlight (verb), intricate, foster, enhance, vibrant, exemplify, embody',
+    '- Fix copula avoidance: "serves as"/"stands as"/"represents" → "is"/"was"',
+    '- Remove em dashes — replace with comma, period, or colon',
+    '- Break up rule-of-three constructions',
+    '- Cut superficial -ing endings (symbolizing, highlighting, reflecting)',
+    '- Cut significance inflation (pivotal moment, vital role, testament to)',
+    '- Add concrete specificity where text is vague',
+    '',
+    `Style: ${style || 'General'}`,
+  ]
+  if (requirements) lines.push(`Requirements: ${requirements}`)
+  lines.push('', 'Return ONLY the rewritten text. No explanation.', '', 'Text:', '"""', workingText, '"""')
+
+  const msg = await withRateLimitRetry(() => client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 4096,
+    system: skillMd,
+    messages: [{ role: 'user', content: lines.join('\n') }],
+  }))
+
+  const block = msg.content.find(b => b.type === 'text')
+  return block?.type === 'text' ? block.text.trim() : workingText
+}
+
 export async function rewriteSentence(
   workingText: string,
   targetSentence: string,

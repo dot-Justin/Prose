@@ -111,6 +111,15 @@ function computeSentenceWeights(
         }
       }
     }
+
+    for (const sg of result.suggestions ?? []) {
+      const match = sentences.find(s => s.includes(sg.original_phrase))
+      if (match) {
+        const entry = scoreMap.get(match)!
+        entry.weight += 40
+        if (!entry.flaggedBy.includes(result.name)) entry.flaggedBy.push(result.name)
+      }
+    }
   }
 
   return scoreMap

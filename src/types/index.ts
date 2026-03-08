@@ -85,6 +85,7 @@ export interface RewriteNode extends BaseNode {
   type: 'REWRITE'
   // New (batch):
   rewrites?: Array<{ original: string; rewritten: string; pattern?: string }>
+  isFullPass?: boolean
   // Old (single) — compat with stored sessions:
   original?: string
   rewritten?: string
