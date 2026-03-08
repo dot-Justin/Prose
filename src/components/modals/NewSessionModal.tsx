@@ -2,10 +2,10 @@ import { useState } from 'react'
 import {
   Dialog,
   Portal,
-  CloseButton,
   NumberInput,
   NativeSelect,
 } from '@chakra-ui/react'
+import { CaretDown, CaretUp, X, ArrowRight } from '@phosphor-icons/react'
 import { NewSessionFormData } from '../../types'
 
 const STYLE_PRESETS = [
@@ -85,18 +85,9 @@ export function NewSessionModal({ open, onClose, onSubmit, initialText = '' }: P
                 New Session
               </Dialog.Title>
               <Dialog.CloseTrigger asChild>
-                <CloseButton
-                  size="sm"
-                  style={{
-                    position: 'absolute',
-                    top: '16px',
-                    right: '20px',
-                    color: 'var(--color-text-subtle)',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                />
+                <button type="button" aria-label="Close new session" style={iconCloseBtnStyle}>
+                  <X size={16} />
+                </button>
               </Dialog.CloseTrigger>
             </Dialog.Header>
 
@@ -136,7 +127,9 @@ export function NewSessionModal({ open, onClose, onSubmit, initialText = '' }: P
                       <option key={s} value={s} style={{ background: 'var(--color-surface)' }}>{s}</option>
                     ))}
                   </NativeSelect.Field>
-                  <NativeSelect.Indicator style={{ color: 'var(--color-text-subtle)' }} />
+                  <NativeSelect.Indicator style={{ color: 'var(--color-text-subtle)' }}>
+                    <CaretDown size={14} />
+                  </NativeSelect.Indicator>
                 </NativeSelect.Root>
               </Field>
 
@@ -169,8 +162,12 @@ export function NewSessionModal({ open, onClose, onSubmit, initialText = '' }: P
                     >
                       <NumberInput.Input style={inputStyle} />
                       <NumberInput.Control>
-                        <NumberInput.IncrementTrigger style={stepBtnStyle} />
-                        <NumberInput.DecrementTrigger style={stepBtnStyle} />
+                        <NumberInput.IncrementTrigger style={stepBtnStyle}>
+                          <CaretUp size={10} />
+                        </NumberInput.IncrementTrigger>
+                        <NumberInput.DecrementTrigger style={stepBtnStyle}>
+                          <CaretDown size={10} />
+                        </NumberInput.DecrementTrigger>
                       </NumberInput.Control>
                     </NumberInput.Root>
                   </div>
@@ -185,8 +182,12 @@ export function NewSessionModal({ open, onClose, onSubmit, initialText = '' }: P
                     >
                       <NumberInput.Input style={inputStyle} />
                       <NumberInput.Control>
-                        <NumberInput.IncrementTrigger style={stepBtnStyle} />
-                        <NumberInput.DecrementTrigger style={stepBtnStyle} />
+                        <NumberInput.IncrementTrigger style={stepBtnStyle}>
+                          <CaretUp size={10} />
+                        </NumberInput.IncrementTrigger>
+                        <NumberInput.DecrementTrigger style={stepBtnStyle}>
+                          <CaretDown size={10} />
+                        </NumberInput.DecrementTrigger>
                       </NumberInput.Control>
                     </NumberInput.Root>
                   </div>
@@ -223,7 +224,10 @@ export function NewSessionModal({ open, onClose, onSubmit, initialText = '' }: P
                   e.currentTarget.style.background = 'var(--color-accent)'
                 }}
               >
-                Start Session →
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <span>Start Session</span>
+                  <ArrowRight size={14} />
+                </span>
               </button>
             </Dialog.Footer>
           </Dialog.Content>
@@ -306,6 +310,22 @@ const stepBtnStyle: React.CSSProperties = {
   color: 'var(--color-text-subtle)',
   cursor: 'pointer',
   fontSize: '10px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+}
+
+const iconCloseBtnStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: '16px',
+  right: '20px',
+  color: 'var(--color-text-subtle)',
+  background: 'none',
+  border: 'none',
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
 }
 
 const cancelBtnStyle: React.CSSProperties = {

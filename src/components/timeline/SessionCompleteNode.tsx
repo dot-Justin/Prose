@@ -1,3 +1,4 @@
+import { CheckCircle, XCircle } from '@phosphor-icons/react'
 import { SessionCompleteNode as NodeType } from '../../types'
 import { TimelineNodeWrapper } from './TimelineNodeWrapper'
 import { scoreToColor, scoreLabel } from '../../utils/formatters'
@@ -5,6 +6,22 @@ import { scoreToColor, scoreLabel } from '../../utils/formatters'
 interface Props { node: NodeType; index: number }
 
 export function SessionCompleteNode({ node, index }: Props) {
+  const title = node.passed
+    ? 'All detectors below target'
+    : node.expiredToken
+      ? 'Claude token expired'
+      : node.interrupted
+        ? 'Session interrupted'
+        : 'Reached revision limit'
+
+  const detail = node.passed
+    ? `Final aggregate: ${scoreLabel(node.finalScore)} · ${node.totalRewrites} rewrite${node.totalRewrites !== 1 ? 's' : ''} applied`
+    : node.expiredToken
+      ? 'Update your Claude token in Settings, then run again'
+      : node.interrupted
+        ? node.error ?? 'Stopped before finishing'
+        : `Best aggregate: ${scoreLabel(node.bestScore ?? node.finalScore)} · ${node.totalRewrites} rewrite${node.totalRewrites !== 1 ? 's' : ''} applied`
+
   return (
     <TimelineNodeWrapper index={index}>
       <div style={{ padding: '14px 0', borderBottom: '1px solid var(--color-border)' }}>
@@ -30,12 +47,7 @@ export function SessionCompleteNode({ node, index }: Props) {
           alignItems: 'center',
           gap: '10px',
         }}>
-          <span style={{
-            fontSize: '20px',
-            color: node.passed ? 'var(--color-green)' : 'var(--color-red)',
-          }}>
-            {node.passed ? '✓' : '✗'}
-          </span>
+          {node.passed ? <CheckCircle size={20} color="var(--color-green)" /> : <XCircle size={20} color="var(--color-red)" />}
           <div>
             <div style={{
               fontWeight: 600,
@@ -43,14 +55,10 @@ export function SessionCompleteNode({ node, index }: Props) {
               color: node.passed ? 'var(--color-green)' : 'var(--color-red)',
               fontFamily: 'var(--font-mono)',
             }}>
-              {node.passed
-                ? 'All detectors below target'
-                : `Reached revision limit`}
+              {title}
             </div>
             <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '2px', fontFamily: 'var(--font-mono)' }}>
-              {node.passed
-                ? `Final aggregate: ${scoreLabel(node.finalScore)} · ${node.totalRewrites} rewrite${node.totalRewrites !== 1 ? 's' : ''} applied`
-                : `Best aggregate: ${scoreLabel(node.bestScore ?? node.finalScore)} · ${node.totalRewrites} rewrite${node.totalRewrites !== 1 ? 's' : ''} applied`}
+              {detail}
             </div>
           </div>
         </div>

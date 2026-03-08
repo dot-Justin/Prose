@@ -12,6 +12,7 @@ export function useSessionStream(
   sessionId: string | null,
   onNode: (node: TimelineNode) => void,
   onComplete: (score: number, passed: boolean) => void,
+  onConnectionError: (message: string) => void,
   onDone: () => void,
 ) {
   useEffect(() => {
@@ -31,6 +32,11 @@ export function useSessionStream(
       if (type === 'DONE') {
         es.close()
         onDone()
+        return
+      }
+
+      if (type === 'CONNECTION_ERROR') {
+        onConnectionError((payload.message as string) ?? 'Claude connection failed')
         return
       }
 

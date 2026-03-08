@@ -1,79 +1,116 @@
-import Anthropic from '@anthropic-ai/sdk'
+import fs from 'fs'
+import path from 'path'
+import { query } from '@anthropic-ai/claude-agent-sdk'
+import { Settings } from './storage'
 
-// Full humanizer skill content (after frontmatter)
-const HUMANIZER_SYSTEM = `# Humanizer: Remove AI Writing Patterns
+const FALLBACK_SKILL_MD = 'Rewrite the sentence to sound like a human wrote it. Vary sentence length, remove AI vocabulary (utilize->use, leverage->use, delve, etc.), and break predictable rhythm.'
 
-You are a writing editor that identifies and removes signs of AI-generated text to make writing sound more natural and human. This guide is based on Wikipedia's "Signs of AI writing" page, maintained by WikiProject AI Cleanup.
+let cachedSkillMd: string | null = null
 
-## PERSONALITY AND SOUL
-
-Avoiding AI patterns is only half the job. Good writing has a human behind it.
-
-Have opinions. Vary your rhythm. Short punchy sentences. Then longer ones that take their time. Acknowledge complexity and mixed feelings. Use "I" when it fits. Let some mess in. Be specific about feelings.
-
-## CONTENT PATTERNS TO REMOVE
-
-1. Undue emphasis on significance: "stands as", "serves as", "pivotal moment", "marks a shift", "setting the stage", "reflects broader", "testament to", "underscores its importance"
-
-2. Promotional language: "boasts", "vibrant", "profound", "groundbreaking", "renowned", "breathtaking", "nestled", "in the heart of", "showcasing"
-
-3. Superficial -ing phrases: Adding "highlighting...", "underscoring...", "reflecting...", "contributing to...", "fostering..." as fake depth
-
-4. Vague attributions: "Industry reports", "Experts argue", "Observers have cited", "Some critics argue" — replace with specific sources
-
-5. AI vocabulary: "Additionally", "align with", "crucial", "delve", "emphasizing", "enhance", "fostering", "highlight", "interplay", "intricate", "landscape", "pivotal", "showcase", "tapestry", "testament", "underscore", "vibrant"
-
-6. Copula avoidance: "serves as/stands as/marks/represents" → use "is/are/has" instead
-
-7. Negative parallelisms: "Not only...but...", "It's not just about..., it's..." — overused
-
-8. Rule of three: forcing ideas into groups of three
-
-9. Em dash overuse: replace — with commas, periods, or restructuring
-
-10. Filler phrases: "In order to", "Due to the fact that", "At this point in time", "It is important to note that"
-
-11. Excessive hedging: "could potentially possibly be argued that might have some effect"
-
-12. Generic conclusions: "The future looks bright", "Exciting times lie ahead", "journey toward excellence"
-
-## PROCESS
-
-1. Identify AI patterns in the target sentence
-2. Rewrite ONLY that sentence — do not change surrounding text
-3. Make it sound natural when read aloud
-4. Vary sentence structure from surrounding context
-5. Name the specific AI pattern you addressed`
-
-const REWRITE_TOOL: Anthropic.Tool = {
-  name: 'submit_rewrite',
-  description: 'Submit the rewritten sentence',
-  input_schema: {
-    type: 'object' as const,
-    required: ['rewritten', 'pattern'],
-    properties: {
-      rewritten: {
-        type: 'string',
-        description: 'The rewritten sentence only — not the full text',
-      },
-      pattern: {
-        type: 'string',
-        description: 'The AI writing pattern addressed, e.g. "Removed copula avoidance: serves as → is", "Replaced AI vocabulary: leverage → use", "Broke em dash construction"',
-      },
-    },
-  },
+function fallbackTitle(inputText: string): string {
+  return inputText.slice(0, 50).trim() + '...'
 }
 
-export async function generateTitle(inputText: string, apiKey: string): Promise<string> {
-  const client = new Anthropic({ apiKey })
-  const msg = await client.messages.create({
-    model: 'claude-haiku-4-5',
-    max_tokens: 30,
-    system: 'Generate a short 5–7 word title for this text. Return only the title, no quotes, no punctuation at the end.',
-    messages: [{ role: 'user', content: inputText.slice(0, 400) }],
-  })
-  const block = msg.content.find(b => b.type === 'text')
-  return block?.type === 'text' ? block.text.trim() : inputText.slice(0, 40).trim()
+function toErrorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
+export function applyCredential(settings: Settings): void {
+  delete process.env.ANTHROPIC_API_KEY
+  delete process.env.CLAUDE_CODE_OAUTH_TOKEN
+
+  if (!settings.claudeCredential) return
+
+  if (settings.claudeAuthType === 'oauth') {
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = settings.claudeCredential
+    return
+  }
+
+  process.env.ANTHROPIC_API_KEY = settings.claudeCredential
+}
+
+export function loadSkillMd(): string {
+  if (cachedSkillMd !== null) return cachedSkillMd
+
+  const candidates = [
+    path.resolve(process.cwd(), '.claude', 'research', 'Humanizer Skill', 'SKILL.md'),
+    path.resolve(process.cwd(), '..', '.claude', 'research', 'Humanizer Skill', 'SKILL.md'),
+  ]
+
+  for (const skillPath of candidates) {
+    try {
+      cachedSkillMd = fs.readFileSync(skillPath, 'utf-8')
+      return cachedSkillMd
+    } catch {
+      continue
+    }
+  }
+
+  cachedSkillMd = FALLBACK_SKILL_MD
+  return cachedSkillMd
+}
+
+export function formatClaudeError(err: unknown): string {
+  const message = toErrorMessage(err)
+
+  if (/claude code cli|@anthropic-ai\/claude-code|spawn .*enoent|executable/i.test(message)) {
+    return 'Claude Code CLI not found. Run: npm install -g @anthropic-ai/claude-code'
+  }
+
+  return message
+}
+
+export function isClaudeAuthError(err: unknown): boolean {
+  const message = formatClaudeError(err).toLowerCase()
+
+  if (message.includes('claude code cli not found')) return false
+
+  return /\b401\b|unauthorized|authentication|invalid api key|api key .*invalid|oauth token|token expired|expired token|invalid token|auth/.test(message)
+}
+
+async function runQuery(prompt: string, systemPrompt?: string): Promise<string> {
+  for await (const msg of query({
+    prompt,
+    options: {
+      systemPrompt,
+      allowedTools: [],
+      permissionMode: 'bypassPermissions',
+      allowDangerouslySkipPermissions: true,
+      maxTurns: 1,
+    },
+  })) {
+    if (msg.type !== 'result') continue
+
+    if (msg.subtype !== 'success' || msg.is_error) {
+      const errors = 'errors' in msg && Array.isArray(msg.errors) ? msg.errors : []
+      throw new Error(errors.join('; ') || 'Claude request failed')
+    }
+
+    return msg.result.trim()
+  }
+
+  throw new Error('No result from Claude')
+}
+
+export async function generateTitle(
+  inputText: string,
+  settings: Settings,
+): Promise<string> {
+  applyCredential(settings)
+
+  const prompt = [
+    'Generate a short 5-7 word title for this text.',
+    'Return ONLY the title - no quotes, no explanation.',
+    '',
+    inputText.slice(0, 400),
+  ].join('\n')
+
+  try {
+    const result = await runQuery(prompt)
+    return result || fallbackTitle(inputText)
+  } catch (err) {
+    throw new Error(formatClaudeError(err))
+  }
 }
 
 export interface RewriteResult {
@@ -81,48 +118,63 @@ export interface RewriteResult {
   pattern: string
 }
 
-export async function rewriteWithClaude(
+export async function rewriteSentence(
   workingText: string,
   targetSentence: string,
   suggestion: string,
   style: string,
   requirements: string,
-  apiKey: string,
+  skillMd: string,
+  settings: Settings,
 ): Promise<RewriteResult> {
-  const client = new Anthropic({ apiKey })
+  applyCredential(settings)
 
-  const userContent = [
-    `Full text:\n"""\n${workingText}\n"""`,
-    ``,
-    `Target sentence to rewrite:\n"${targetSentence}"`,
-    suggestion ? `\nyouscan suggestion: "${suggestion}"` : '',
-    style ? `\nStyle: ${style}` : '\nStyle: General',
-    requirements ? `\nRequirements: ${requirements}` : '',
-    `\nRewrite ONLY the target sentence — do not change anything else. Submit using submit_rewrite.`,
-  ].filter(Boolean).join('\n')
+  const lines = [
+    'Full text:',
+    '"""',
+    workingText,
+    '"""',
+    '',
+    'Target sentence flagged by detectors:',
+    `"${targetSentence}"`,
+  ]
 
-  const msg = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 500,
-    system: HUMANIZER_SYSTEM,
-    tools: [REWRITE_TOOL],
-    tool_choice: { type: 'any' },
-    messages: [{ role: 'user', content: userContent }],
-  })
+  if (suggestion) lines.push('', `youscan alternative: "${suggestion}"`)
 
-  const toolUse = msg.content.find(b => b.type === 'tool_use')
-  if (!toolUse || toolUse.type !== 'tool_use') {
-    // Fallback: extract text content
-    const text = msg.content.find(b => b.type === 'text')
-    return {
-      rewritten: text?.type === 'text' ? text.text.trim() : targetSentence,
-      pattern: 'Humanized sentence',
+  lines.push('', `Style: ${style || 'General'}`)
+
+  if (requirements) lines.push(`Requirements: ${requirements}`)
+
+  lines.push(
+    '',
+    'Rewrite ONLY the target sentence - do not change anything else.',
+    '',
+    'Return a JSON object on a single line with exactly these two fields:',
+    '{"rewritten": "<your rewritten sentence>", "pattern": "<AI pattern addressed, e.g. Removed copula avoidance: serves as -> is>"}',
+    '',
+    'Return ONLY the JSON - no markdown, no explanation, no code fences.',
+  )
+
+  try {
+    const text = await runQuery(lines.join('\n'), skillMd)
+    const clean = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
+
+    try {
+      const parsed = JSON.parse(clean) as Partial<RewriteResult>
+      return {
+        rewritten: typeof parsed.rewritten === 'string' ? parsed.rewritten.trim() : targetSentence,
+        pattern: typeof parsed.pattern === 'string' ? parsed.pattern : 'parse error - sentence unchanged',
+      }
+    } catch {
+      return { rewritten: targetSentence, pattern: 'parse error - sentence unchanged' }
     }
+  } catch (err) {
+    throw new Error(formatClaudeError(err))
   }
+}
 
-  const input = toolUse.input as { rewritten: string; pattern: string }
-  return {
-    rewritten: input.rewritten?.trim() ?? targetSentence,
-    pattern: input.pattern ?? 'Humanized sentence',
-  }
+export async function testSavedAuth(settings: Settings): Promise<Settings['claudeAuthType']> {
+  applyCredential(settings)
+  await runQuery('Say "ok"')
+  return settings.claudeAuthType
 }

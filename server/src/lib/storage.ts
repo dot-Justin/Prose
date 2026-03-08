@@ -5,16 +5,37 @@ const DATA_DIR = path.join(process.cwd(), 'data')
 const SESSIONS_DIR = path.join(DATA_DIR, 'sessions')
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json')
 
+export type ClaudeAuthType = 'oauth' | 'apikey'
+
 // Ensure directories exist
 fs.mkdirSync(SESSIONS_DIR, { recursive: true })
 
 export interface Settings {
-  claudeApiKey: string
+  claudeAuthType: ClaudeAuthType
+  claudeCredential: string
   enabledDetectors: string[]
   defaults: {
     maxRevisions: number
     targetDetectionPct: number
   }
+}
+
+interface LegacySettings {
+  claudeApiKey?: string
+  claudeAuthType?: ClaudeAuthType
+  claudeCredential?: string
+  enabledDetectors?: unknown
+  defaults?: {
+    maxRevisions?: unknown
+    targetDetectionPct?: unknown
+  }
+}
+
+const DEFAULT_SETTINGS: Settings = {
+  claudeAuthType: 'oauth',
+  claudeCredential: '',
+  enabledDetectors: ['NoteGPT', 'youscan', 'AIDetector', 'decopy.ai', 'aiscan24'],
+  defaults: { maxRevisions: 10, targetDetectionPct: 25 },
 }
 
 export interface StoredRevision {
@@ -38,18 +59,47 @@ export interface StoredSession {
   revisions: StoredRevision[]
 }
 
+function normalizeSettings(input: LegacySettings): Settings {
+  const maxRevisions = typeof input.defaults?.maxRevisions === 'number'
+    ? input.defaults.maxRevisions
+    : DEFAULT_SETTINGS.defaults.maxRevisions
+  const targetDetectionPct = typeof input.defaults?.targetDetectionPct === 'number'
+    ? input.defaults.targetDetectionPct
+    : DEFAULT_SETTINGS.defaults.targetDetectionPct
+
+  return {
+    claudeAuthType: input.claudeAuthType === 'apikey' ? 'apikey' : 'oauth',
+    claudeCredential: typeof input.claudeCredential === 'string' ? input.claudeCredential : '',
+    enabledDetectors: Array.isArray(input.enabledDetectors)
+      ? input.enabledDetectors.filter((value): value is string => typeof value === 'string')
+      : [...DEFAULT_SETTINGS.enabledDetectors],
+    defaults: {
+      maxRevisions,
+      targetDetectionPct,
+    },
+  }
+}
+
 export function loadSettings(): Settings {
   try {
     const raw = fs.readFileSync(SETTINGS_FILE, 'utf-8')
-    return JSON.parse(raw)
-  } catch {
-    const defaults: Settings = {
-      claudeApiKey: '',
-      enabledDetectors: ['NoteGPT', 'youscan', 'AIDetector', 'decopy.ai', 'aiscan24'],
-      defaults: { maxRevisions: 10, targetDetectionPct: 25 },
+    const parsed = JSON.parse(raw) as LegacySettings
+    const migrated = 'claudeApiKey' in parsed
+      ? normalizeSettings({
+          ...parsed,
+          claudeAuthType: parsed.claudeApiKey ? 'apikey' : parsed.claudeAuthType,
+          claudeCredential: typeof parsed.claudeApiKey === 'string' ? parsed.claudeApiKey : parsed.claudeCredential,
+        })
+      : normalizeSettings(parsed)
+
+    if (JSON.stringify(parsed) !== JSON.stringify(migrated)) {
+      saveSettings(migrated)
     }
-    fs.writeFileSync(SETTINGS_FILE, JSON.stringify(defaults, null, 2))
-    return defaults
+
+    return migrated
+  } catch {
+    saveSettings(DEFAULT_SETTINGS)
+    return DEFAULT_SETTINGS
   }
 }
 

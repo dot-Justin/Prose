@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
-import { Session, TimelineNode, NewSessionFormData, Revision } from './types'
+import { Session, TimelineNode, NewSessionFormData, Revision, SettingsSummary, ClaudeAuthType } from './types'
 import { Sidebar } from './components/sidebar/Sidebar'
 import { Timeline } from './components/timeline/Timeline'
 import { ArtifactPanel } from './components/artifact/ArtifactPanel'
@@ -82,11 +82,28 @@ export default function App() {
   const [artifactOpen, setArtifactOpen] = useState(true)
   const [selectedRevision, setSelectedRevision] = useState(0)
   const [highlightChanges, setHighlightChanges] = useState(true)
-  const [loading, setLoading] = useState(true)
+  const [sessionsLoading, setSessionsLoading] = useState(true)
+  const [settingsLoading, setSettingsLoading] = useState(true)
   const [toast, setToast] = useState<string | null>(null)
+  const [settingsSummary, setSettingsSummary] = useState<SettingsSummary | null>(null)
+  const [preferredAuthType, setPreferredAuthType] = useState<ClaudeAuthType | null>(null)
+  const [stickyConnectionError, setStickyConnectionError] = useState<string | null>(null)
 
   const activeSession = sessions.find(s => s.id === activeSessionId) ?? null
   const activeInputText = activeSessionId ? (inputTexts[activeSessionId] ?? '') : ''
+  const hasCredential = Boolean(settingsSummary?.claudeCredential)
+  const loading = sessionsLoading || settingsLoading
+
+  const loadSettings = useCallback(() => {
+    setSettingsLoading(true)
+    fetch('/api/settings')
+      .then(r => r.json())
+      .then((data: SettingsSummary) => {
+        setSettingsSummary(data)
+      })
+      .catch(console.error)
+      .finally(() => setSettingsLoading(false))
+  }, [])
 
   // Load sessions on mount
   useEffect(() => {
@@ -96,8 +113,12 @@ export default function App() {
         setSessions(data.sessions.map(deserializeSession))
       })
       .catch(console.error)
-      .finally(() => setLoading(false))
+      .finally(() => setSessionsLoading(false))
   }, [])
+
+  useEffect(() => {
+    loadSettings()
+  }, [loadSettings])
 
   // Auto-dismiss toast
   useEffect(() => {
@@ -176,7 +197,11 @@ export default function App() {
     }
   }, [streamSessionId])
 
-  useSessionStream(streamSessionId, handleSSENode, handleSSEComplete, handleSSEDone)
+  const handleConnectionError = useCallback((message: string) => {
+    setStickyConnectionError(message)
+  }, [])
+
+  useSessionStream(streamSessionId, handleSSENode, handleSSEComplete, handleConnectionError, handleSSEDone)
 
   async function handleNewSession(data: NewSessionFormData) {
     try {
@@ -188,8 +213,9 @@ export default function App() {
 
       if (!res.ok) {
         const err = await res.json() as { error: string; message?: string }
-        if (err.error === 'NO_API_KEY') {
-          setToast('Add a Claude API key in Settings first')
+        if (err.error === 'NO_CLAUDE_AUTH') {
+          setToast('Add Claude authentication in Settings first')
+          setPreferredAuthType(settingsSummary?.claudeAuthType ?? 'oauth')
           setSettingsOpen(true)
         } else {
           setToast(err.message ?? 'Failed to create session')
@@ -251,7 +277,10 @@ export default function App() {
           activeSessionId={activeSessionId}
           onSelectSession={handleSelectSession}
           onNewSession={() => setModalOpen(true)}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={() => {
+            setPreferredAuthType(settingsSummary?.claudeAuthType ?? 'oauth')
+            setSettingsOpen(true)
+          }}
         />
       </motion.div>
 
@@ -267,25 +296,34 @@ export default function App() {
         ) : activeSession ? (
           <Timeline session={activeSession} />
         ) : (
-          <EmptyState onNewSession={() => setModalOpen(true)} />
+          <EmptyState
+            hasCredential={hasCredential}
+            onNewSession={() => setModalOpen(true)}
+            onOpenSettings={(authType) => {
+              setPreferredAuthType(authType)
+              setSettingsOpen(true)
+            }}
+          />
         )}
       </motion.div>
 
       {/* Right artifact panel */}
-      <motion.div
-        variants={col}
-        style={{ position: 'relative', display: 'flex', flexShrink: 0 }}
-      >
-        <ArtifactPanel
-          session={displaySession}
-          open={artifactOpen}
-          onToggle={() => setArtifactOpen(o => !o)}
-          selectedRevision={selectedRevision}
-          onSelectRevision={setSelectedRevision}
-          highlightChanges={highlightChanges}
-          onToggleHighlight={() => setHighlightChanges(h => !h)}
-        />
-      </motion.div>
+      {activeSession && (
+        <motion.div
+          variants={col}
+          style={{ position: 'relative', display: 'flex', flexShrink: 0 }}
+        >
+          <ArtifactPanel
+            session={displaySession}
+            open={artifactOpen}
+            onToggle={() => setArtifactOpen(o => !o)}
+            selectedRevision={selectedRevision}
+            onSelectRevision={setSelectedRevision}
+            highlightChanges={highlightChanges}
+            onToggleHighlight={() => setHighlightChanges(h => !h)}
+          />
+        </motion.div>
+      )}
 
       {/* New Session modal */}
       <NewSessionModal
@@ -301,7 +339,56 @@ export default function App() {
       <SettingsModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        onSaved={() => {
+          setStickyConnectionError(null)
+          loadSettings()
+        }}
+        preferredAuthType={preferredAuthType}
       />
+
+      {stickyConnectionError && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          width: 'min(760px, calc(100vw - 32px))',
+          background: 'rgba(201,151,74,0.16)',
+          border: '1px solid rgba(201,151,74,0.35)',
+          borderRadius: '10px',
+          padding: '14px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '16px',
+          zIndex: 10000,
+          boxShadow: '0 14px 36px rgba(0,0,0,0.35)',
+        }}>
+          <div style={{ fontSize: '13px', lineHeight: 1.5, color: 'var(--color-text)' }}>
+            Your Claude token has expired. Run `claude setup-token` and update it in Settings → Claude Authentication.
+          </div>
+          <button
+            onClick={() => {
+              setPreferredAuthType(settingsSummary?.claudeAuthType ?? 'oauth')
+              setSettingsOpen(true)
+            }}
+            style={{
+              padding: '8px 12px',
+              background: 'var(--color-accent)',
+              color: '#0f0e0d',
+              border: 'none',
+              borderRadius: '6px',
+              fontFamily: 'var(--font-ui)',
+              fontSize: '12px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Go to Settings
+          </button>
+        </div>
+      )}
 
       {/* Toast */}
       {toast && (
@@ -327,4 +414,3 @@ export default function App() {
     </motion.div>
   )
 }
-

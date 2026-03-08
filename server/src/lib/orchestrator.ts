@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto'
 import { Emitter } from './sse'
 import { Settings, StoredSession, StoredRevision, saveSession } from './storage'
-import { generateTitle, rewriteWithClaude } from './claude'
+import { isClaudeAuthError, loadSkillMd, rewriteSentence } from './claude'
 import {
   runAllDetectors,
   aggregate,
@@ -9,6 +9,8 @@ import {
   pickTargetSentence,
   DetectorResult,
 } from './detectors/index'
+
+const skillMd = loadSkillMd()
 
 function makeId() {
   return randomUUID()
@@ -125,20 +127,27 @@ export async function runOrchestrator(
     let rewritten: string
     let pattern: string
     try {
-      const result = await rewriteWithClaude(
+      const result = await rewriteSentence(
         workingText,
         target.sentence,
         target.suggestion,
         style,
         requirements,
-        settings.claudeApiKey,
+        skillMd,
+        settings,
       )
       rewritten = result.rewritten
       pattern = result.pattern
     } catch (err) {
+      const expiredToken = isClaudeAuthError(err)
+      if (expiredToken) {
+        emit('CONNECTION_ERROR', { message: 'Claude token expired — update it in Settings' })
+      }
+
       emitNode('SESSION_COMPLETE', {
         passed: false,
         interrupted: true,
+        expiredToken,
         error: String(err),
         beforeResults: toFrontendResults(beforeResults, targetDetectionPct),
         afterResults: toFrontendResults(lastResults, targetDetectionPct, outliers),

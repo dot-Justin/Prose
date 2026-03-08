@@ -1,3 +1,4 @@
+import { CheckCircle, DotsThree, XCircle } from '@phosphor-icons/react'
 import { Session } from '../../types'
 import { useAutoScroll } from '../../hooks/useAutoScroll'
 import { SessionStartedNode } from './SessionStartedNode'
@@ -47,10 +48,13 @@ export function Timeline({ session }: Props) {
           fontSize: '12px',
           color: 'var(--color-text-subtle)',
           fontFamily: 'var(--font-mono)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
         }}>
-          {session.status === 'complete-pass' && '✓ Passed'}
-          {session.status === 'complete-fail' && '✗ Did not pass'}
-          {session.status === 'in-progress' && '⋯ In progress'}
+          {session.status === 'complete-pass' && <><CheckCircle size={14} color="var(--color-green)" />Passed</>}
+          {session.status === 'complete-fail' && <><XCircle size={14} color="var(--color-red)" />Did not pass</>}
+          {session.status === 'in-progress' && <><DotsThree size={14} color="var(--color-text-subtle)" />In progress</>}
         </div>
       </div>
 

@@ -1,11 +1,9 @@
-import { useState, useEffect } from 'react'
-import { Dialog, Portal, CloseButton } from '@chakra-ui/react'
+import { useState, useEffect, useCallback } from 'react'
+import { Dialog, Portal } from '@chakra-ui/react'
+import { CheckCircle, X, XCircle } from '@phosphor-icons/react'
+import { ClaudeAuthType, SettingsSummary } from '../../types'
 
-interface Settings {
-  claudeApiKey: string
-  enabledDetectors: string[]
-  defaults: { maxRevisions: number; targetDetectionPct: number }
-}
+interface Settings extends SettingsSummary {}
 
 const ALL_DETECTORS = [
   { name: 'NoteGPT', type: 'Direct HTTP', notes: 'Open API, per-sentence flagging' },
@@ -18,23 +16,52 @@ const ALL_DETECTORS = [
 interface Props {
   open: boolean
   onClose: () => void
+  onSaved?: () => void
+  preferredAuthType?: ClaudeAuthType | null
 }
 
-export function SettingsModal({ open, onClose }: Props) {
+function getAuthCopy(authType: ClaudeAuthType) {
+  if (authType === 'oauth') {
+    return {
+      label: 'OAuth Token',
+      placeholder: 'sk-ant-oat01-...',
+      helper: 'Run `claude setup-token` in your terminal to generate this. Valid for 1 year. Requires Claude Pro or Max subscription.',
+      savedLabel: 'Token saved - enter new to replace',
+      success: 'Connected (OAuth)',
+      failure: 'Invalid token - run `claude setup-token` again',
+    }
+  }
+
+  return {
+    label: 'API Key',
+    placeholder: 'sk-ant-api03-...',
+    helper: 'Get your key at console.anthropic.com',
+    savedLabel: 'Key saved - enter new to replace',
+    success: 'Connected (API Key)',
+    failure: 'Invalid API key',
+  }
+}
+
+export function SettingsModal({ open, onClose, onSaved, preferredAuthType }: Props) {
   const [settings, setSettings] = useState<Settings | null>(null)
-  const [apiKeyInput, setApiKeyInput] = useState('')
+  const [authType, setAuthType] = useState<ClaudeAuthType>('oauth')
+  const [credentialInput, setCredentialInput] = useState('')
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'ok' | 'error'>('idle')
-  const [testError, setTestError] = useState('')
+  const [testMessage, setTestMessage] = useState('')
   const [saving, setSaving] = useState(false)
   const [aidetectorQuota, setAidetectorQuota] = useState<{ remaining: number; allowed: number } | null>(null)
 
-  useEffect(() => {
-    if (!open) return
+  const authCopy = getAuthCopy(authType)
+
+  const loadData = useCallback(() => {
     fetch('/api/settings')
       .then(r => r.json())
       .then((s: Settings) => {
         setSettings(s)
-        setApiKeyInput(s.claudeApiKey.includes('•') ? '' : s.claudeApiKey)
+        setAuthType(preferredAuthType ?? s.claudeAuthType)
+        setCredentialInput('')
+        setTestStatus('idle')
+        setTestMessage('')
       })
       .catch(console.error)
 
@@ -42,53 +69,12 @@ export function SettingsModal({ open, onClose }: Props) {
       .then(r => r.json())
       .then(setAidetectorQuota)
       .catch(() => {})
-  }, [open])
+  }, [preferredAuthType])
 
-  async function testKey() {
-    if (!apiKeyInput.trim()) return
-    setTestStatus('testing')
-    setTestError('')
-    try {
-      const res = await fetch('/api/settings/test-claude', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: apiKeyInput.trim() }),
-      })
-      if (res.ok) {
-        setTestStatus('ok')
-      } else {
-        const err = await res.json() as { error: string }
-        setTestStatus('error')
-        setTestError(err.error ?? 'Invalid key')
-      }
-    } catch {
-      setTestStatus('error')
-      setTestError('Network error')
-    }
-  }
-
-  async function save() {
-    if (!settings) return
-    setSaving(true)
-    try {
-      const payload: Partial<Settings> & { claudeApiKey?: string } = {
-        enabledDetectors: settings.enabledDetectors,
-        defaults: settings.defaults,
-      }
-      if (apiKeyInput.trim()) payload.claudeApiKey = apiKeyInput.trim()
-
-      await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      onClose()
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setSaving(false)
-    }
-  }
+  useEffect(() => {
+    if (!open) return
+    loadData()
+  }, [open, loadData])
 
   function toggleDetector(name: string) {
     if (!settings) return
@@ -97,6 +83,96 @@ export function SettingsModal({ open, onClose }: Props) {
       ? enabled.filter(d => d !== name)
       : [...enabled, name]
     setSettings({ ...settings, enabledDetectors: next })
+  }
+
+  async function persistSettings(): Promise<boolean> {
+    if (!settings) return false
+
+    const trimmedCredential = credentialInput.trim()
+
+    if (settings.claudeCredential && authType !== settings.claudeAuthType && !trimmedCredential) {
+      setTestStatus('error')
+      setTestMessage(`Enter a new ${authType === 'oauth' ? 'token' : 'API key'} to switch auth type`)
+      return false
+    }
+
+    const payload: Partial<Settings> = {
+      claudeAuthType: authType,
+      enabledDetectors: settings.enabledDetectors,
+      defaults: settings.defaults,
+    }
+
+    if (trimmedCredential) payload.claudeCredential = trimmedCredential
+
+    const res = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+
+    if (!res.ok) {
+      throw new Error('Failed to save settings')
+    }
+
+    await new Promise<void>((resolve) => {
+      fetch('/api/settings')
+        .then(r => r.json())
+        .then((next: Settings) => {
+          setSettings(next)
+          setAuthType(next.claudeAuthType)
+          setCredentialInput('')
+          resolve()
+        })
+        .catch((err) => {
+          console.error(err)
+          resolve()
+        })
+    })
+
+    onSaved?.()
+    return true
+  }
+
+  async function testConnection() {
+    if (!settings) return
+
+    setTestStatus('testing')
+    setTestMessage('')
+
+    try {
+      const saved = await persistSettings()
+      if (!saved) return
+
+      const res = await fetch('/api/settings/test-auth', { method: 'POST' })
+      const body = await res.json() as { success: boolean; authType?: ClaudeAuthType; error?: string }
+
+      if (res.ok && body.success) {
+        setTestStatus('ok')
+        setTestMessage(body.authType === 'oauth' ? 'Connected (OAuth)' : 'Connected (API Key)')
+      } else {
+        setTestStatus('error')
+        setTestMessage(body.error ?? authCopy.failure)
+      }
+    } catch (err) {
+      setTestStatus('error')
+      setTestMessage(err instanceof Error ? err.message : 'Network error')
+    }
+  }
+
+  async function save() {
+    if (!settings) return
+    setSaving(true)
+
+    try {
+      const saved = await persistSettings()
+      if (!saved) return
+      onClose()
+    } catch (err) {
+      setTestStatus('error')
+      setTestMessage(err instanceof Error ? err.message : 'Failed to save settings')
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -124,39 +200,82 @@ export function SettingsModal({ open, onClose }: Props) {
                 Settings
               </Dialog.Title>
               <Dialog.CloseTrigger asChild>
-                <CloseButton size="sm" style={{ position: 'absolute', top: '16px', right: '20px', color: 'var(--color-text-subtle)', background: 'none', border: 'none', cursor: 'pointer' }} />
+                <button type="button" aria-label="Close settings" style={iconCloseBtnStyle}>
+                  <X size={16} />
+                </button>
               </Dialog.CloseTrigger>
             </Dialog.Header>
 
             <Dialog.Body style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '24px' }}>
-              {/* Claude API */}
               <section>
-                <div style={sectionLabel}>Claude API</div>
-                <div style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
-                  <input
-                    type="password"
-                    value={apiKeyInput}
-                    onChange={e => { setApiKeyInput(e.target.value); setTestStatus('idle') }}
-                    placeholder={settings?.claudeApiKey.includes('•') ? 'Key saved — enter new to replace' : 'sk-ant-…'}
-                    style={{ ...inputStyle, flex: 1 }}
-                  />
-                  <button
-                    onClick={testKey}
-                    disabled={!apiKeyInput.trim() || testStatus === 'testing'}
-                    style={{ ...btnStyle, opacity: apiKeyInput.trim() ? 1 : 0.5 }}
-                  >
-                    {testStatus === 'testing' ? '…' : testStatus === 'ok' ? '✓ Valid' : 'Test'}
-                  </button>
+                <div style={sectionLabel}>Claude Authentication</div>
+                <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={radioRowStyle}>
+                    <input
+                      type="radio"
+                      name="claude-auth-type"
+                      checked={authType === 'oauth'}
+                      onChange={() => { setAuthType('oauth'); setTestStatus('idle'); setTestMessage('') }}
+                    />
+                    <div>
+                      <div style={radioTitleStyle}>Claude Subscription</div>
+                      <div style={radioSubtitleStyle}>Pro / Max</div>
+                    </div>
+                  </label>
+                  <label style={radioRowStyle}>
+                    <input
+                      type="radio"
+                      name="claude-auth-type"
+                      checked={authType === 'apikey'}
+                      onChange={() => { setAuthType('apikey'); setTestStatus('idle'); setTestMessage('') }}
+                    />
+                    <div>
+                      <div style={radioTitleStyle}>API Key</div>
+                      <div style={radioSubtitleStyle}>pay-per-use</div>
+                    </div>
+                  </label>
                 </div>
-                {testStatus === 'ok' && (
-                  <p style={{ fontSize: '11px', color: 'var(--color-green)', marginTop: '4px' }}>Key is valid</p>
-                )}
-                {testStatus === 'error' && (
-                  <p style={{ fontSize: '11px', color: 'var(--color-red)', marginTop: '4px' }}>{testError}</p>
+
+                <label style={{ display: 'block', marginTop: '14px' }}>
+                  <span style={sublabel}>{authCopy.label}</span>
+                  <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                    <input
+                      type="password"
+                      value={credentialInput}
+                      onChange={e => { setCredentialInput(e.target.value); setTestStatus('idle'); setTestMessage('') }}
+                      placeholder={settings?.claudeCredential ? authCopy.savedLabel : authCopy.placeholder}
+                      style={{ ...inputStyle, flex: 1 }}
+                    />
+                    <button
+                      onClick={testConnection}
+                      disabled={testStatus === 'testing' || saving}
+                      style={{ ...btnStyle, opacity: testStatus === 'testing' || saving ? 0.6 : 1 }}
+                    >
+                      {testStatus === 'testing' ? 'Testing...' : 'Test Connection'}
+                    </button>
+                  </div>
+                </label>
+
+                <p style={{ fontSize: '11px', color: 'var(--color-text-subtle)', marginTop: '8px', lineHeight: 1.6 }}>
+                  {authCopy.helper}
+                </p>
+
+                {testStatus !== 'idle' && (
+                  <p style={{
+                    fontSize: '11px',
+                    color: testStatus === 'ok' ? 'var(--color-green)' : testStatus === 'error' ? 'var(--color-yellow)' : 'var(--color-text-subtle)',
+                    marginTop: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}>
+                    {testStatus === 'ok' && <CheckCircle size={14} color="var(--color-green)" />}
+                    {testStatus === 'error' && <XCircle size={14} color="var(--color-yellow)" />}
+                    <span>{testStatus === 'ok' ? testMessage || authCopy.success : testStatus === 'error' ? testMessage || authCopy.failure : 'Testing Claude connection...'}</span>
+                  </p>
                 )}
               </section>
 
-              {/* Detectors */}
               <section>
                 <div style={sectionLabel}>Detectors</div>
                 {aidetectorQuota && (
@@ -210,7 +329,6 @@ export function SettingsModal({ open, onClose }: Props) {
                 </div>
               </section>
 
-              {/* Defaults */}
               <section>
                 <div style={sectionLabel}>Defaults</div>
                 <div style={{ display: 'flex', gap: '16px', marginTop: '8px' }}>
@@ -247,7 +365,7 @@ export function SettingsModal({ open, onClose }: Props) {
                 disabled={saving}
                 style={{ ...saveBtnStyle, opacity: saving ? 0.6 : 1 }}
               >
-                {saving ? 'Saving…' : 'Save'}
+                {saving ? 'Saving...' : 'Save'}
               </button>
             </Dialog.Footer>
           </Dialog.Content>
@@ -303,6 +421,19 @@ const btnStyle: React.CSSProperties = {
   whiteSpace: 'nowrap',
 }
 
+const iconCloseBtnStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: '16px',
+  right: '20px',
+  color: 'var(--color-text-subtle)',
+  background: 'none',
+  border: 'none',
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+}
+
 const cancelBtnStyle: React.CSSProperties = {
   padding: '8px 16px',
   background: 'none',
@@ -325,4 +456,22 @@ const saveBtnStyle: React.CSSProperties = {
   fontSize: '13px',
   fontWeight: 600,
   cursor: 'pointer',
+}
+
+const radioRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  padding: '8px 0',
+  color: 'var(--color-text)',
+}
+
+const radioTitleStyle: React.CSSProperties = {
+  fontFamily: 'var(--font-ui)',
+  fontSize: '13px',
+}
+
+const radioSubtitleStyle: React.CSSProperties = {
+  fontSize: '11px',
+  color: 'var(--color-text-subtle)',
 }

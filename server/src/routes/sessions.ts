@@ -34,8 +34,8 @@ router.get('/:id', (req: Request, res: Response) => {
 router.post('/', async (req: Request, res: Response) => {
   const settings = loadSettings()
 
-  if (!settings.claudeApiKey) {
-    res.status(400).json({ error: 'NO_API_KEY', message: 'Add a Claude API key in Settings first' })
+  if (!settings.claudeCredential) {
+    res.status(400).json({ error: 'NO_CLAUDE_AUTH', message: 'Add Claude authentication in Settings first' })
     return
   }
 
@@ -51,9 +51,9 @@ router.post('/', async (req: Request, res: Response) => {
   // Generate title with Haiku
   let title: string
   try {
-    title = await generateTitle(body.inputText, settings.claudeApiKey)
+    title = await generateTitle(body.inputText, settings)
   } catch {
-    title = body.inputText.trim().slice(0, 40) + (body.inputText.length > 40 ? '…' : '')
+    title = body.inputText.trim().slice(0, 40) + (body.inputText.length > 40 ? '...' : '')
   }
 
   const session = {
@@ -101,8 +101,8 @@ router.get('/:id/stream', async (req: Request, res: Response) => {
   }
 
   const settings = loadSettings()
-  if (!settings.claudeApiKey) {
-    res.write(`data: ${JSON.stringify({ type: 'ERROR', payload: { message: 'No API key configured' } })}\n\n`)
+  if (!settings.claudeCredential) {
+    res.write(`data: ${JSON.stringify({ type: 'ERROR', payload: { message: 'No Claude authentication configured' } })}\n\n`)
     res.write('data: {"type":"DONE"}\n\n')
     res.end()
     return

@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react'
 import { motion } from 'framer-motion'
+import { CaretDown, CheckCircle, XCircle } from '@phosphor-icons/react'
 import { DetectionRunNode as NodeType } from '../../types'
 import { TimelineNodeWrapper } from './TimelineNodeWrapper'
 import { scoreToColor, scoreLabel } from '../../utils/formatters'
@@ -64,17 +65,15 @@ export function DetectionRunNode({ node, index }: Props) {
               )}
             </div>
           </div>
-          <svg
-            width="14" height="14" viewBox="0 0 14 14" fill="none"
+          <CaretDown
+            size={14}
             style={{
               flexShrink: 0,
               color: 'var(--color-text-subtle)',
               transform: expanded ? 'rotate(180deg)' : 'none',
               transition: 'transform 0.2s',
             }}
-          >
-            <path d="M2 5l5 5 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
+          />
         </button>
 
         {/* Expanded table */}
@@ -133,13 +132,13 @@ export function DetectionRunNode({ node, index }: Props) {
                       <td style={{ padding: '6px 8px', textAlign: 'right', color, fontWeight: 600 }}>
                         {scoreLabel(result.score)}
                       </td>
-                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>
-                        {result.pass ? (
-                          <span style={{ color: 'var(--color-green)' }}>✓</span>
-                        ) : (
-                          <span style={{ color: 'var(--color-red)' }}>✗</span>
-                        )}
-                      </td>
+                        <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                          {result.pass ? (
+                            <CheckCircle size={14} color="var(--color-green)" />
+                          ) : (
+                            <XCircle size={14} color="var(--color-red)" />
+                          )}
+                        </td>
                     </tr>
                   )
                 })}

@@ -1,10 +1,17 @@
+import { ArrowDown, ArrowUp, CheckCircle, Minus, XCircle } from '@phosphor-icons/react'
 import { RedetectResultNode as NodeType } from '../../types'
 import { TimelineNodeWrapper } from './TimelineNodeWrapper'
-import { deltaIcon, deltaColor } from '../../utils/formatters'
+import { deltaColor } from '../../utils/formatters'
 
 interface Props { node: NodeType; index: number }
 
 export function RedetectResultNode({ node, index }: Props) {
+  function deltaIcon(before: number, after: number, color: string) {
+    const diff = after - before
+    if (diff === 0) return <Minus size={10} color={color} />
+    return diff < 0 ? <ArrowDown size={10} color={color} /> : <ArrowUp size={10} color={color} />
+  }
+
   return (
     <TimelineNodeWrapper index={index}>
       <div style={{
@@ -26,10 +33,12 @@ export function RedetectResultNode({ node, index }: Props) {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
           {node.deltas.map(d => {
             const color = deltaColor(d.before, d.after)
-            const icon = deltaIcon(d.before, d.after)
             const diff = Math.abs(d.after - d.before)
             return (
               <span key={d.detector} style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
                 fontFamily: 'var(--font-mono)',
                 fontSize: '11px',
                 color,
@@ -39,7 +48,9 @@ export function RedetectResultNode({ node, index }: Props) {
                 padding: '2px 7px',
                 whiteSpace: 'nowrap',
               }}>
-                {d.detector} {icon}{diff}pt
+                <span>{d.detector}</span>
+                {deltaIcon(d.before, d.after, color)}
+                <span>{diff}pt</span>
               </span>
             )
           })}
@@ -50,9 +61,12 @@ export function RedetectResultNode({ node, index }: Props) {
           fontSize: '13px',
           fontFamily: 'var(--font-mono)',
           color: node.kept ? 'var(--color-green)' : 'var(--color-red)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
         }}>
-          {node.kept ? '✓ Kept' : '✗ Reverted'}
-          {' '}
+          {node.kept ? <CheckCircle size={14} color="var(--color-green)" /> : <XCircle size={14} color="var(--color-red)" />}
+          <span>{node.kept ? 'Kept' : 'Reverted'}</span>
           <span style={{ color: 'var(--color-text-subtle)', fontSize: '12px' }}>
             — {node.summary}
           </span>

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { CaretLeft, CaretRight, GearSix, Plus } from '@phosphor-icons/react'
 import { Session } from '../../types'
 import { SessionListItem } from './SessionListItem'
 
@@ -48,21 +49,26 @@ export function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSessi
         flexShrink: 0,
       }}>
         {collapsed ? (
-          <span style={{
-            fontFamily: 'var(--font-ui)',
-            fontWeight: 700,
-            fontSize: '16px',
-            color: 'var(--color-accent)',
-            letterSpacing: '-0.02em',
-          }}>P</span>
+          <img
+            src="/logos/prose_mark_gold.svg"
+            alt="Prose"
+            style={{
+              display: 'block',
+              width: '24px',
+              height: '24px',
+            }}
+          />
         ) : (
-          <span style={{
-            fontFamily: 'var(--font-ui)',
-            fontWeight: 700,
-            fontSize: '18px',
-            color: 'var(--color-text)',
-            letterSpacing: '-0.03em',
-          }}>Prose</span>
+          <img
+            src="/logos/prose_logo_horizontal_white.svg"
+            alt="Prose"
+            style={{
+              display: 'block',
+              width: 'auto',
+              height: '24px',
+              maxWidth: '100%',
+            }}
+          />
         )}
       </div>
 
@@ -94,10 +100,7 @@ export function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSessi
           onMouseEnter={e => (e.currentTarget.style.background = 'var(--color-accent-hover)')}
           onMouseLeave={e => (e.currentTarget.style.background = 'var(--color-accent)')}
         >
-          <svg width="13" height="13" viewBox="0 0 13 13" fill="none" style={{ flexShrink: 0 }}>
-            <line x1="6.5" y1="1" x2="6.5" y2="12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            <line x1="1" y1="6.5" x2="12" y2="6.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
+          <Plus size={13} style={{ flexShrink: 0 }} />
           {!collapsed && 'New Session'}
         </button>
       </div>
@@ -149,10 +152,7 @@ export function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSessi
           onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-text-muted)')}
           onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text-subtle)')}
         >
-          <svg width="15" height="15" viewBox="0 0 15 15" fill="none">
-            <path d="M7.5 9.5a2 2 0 100-4 2 2 0 000 4z" stroke="currentColor" strokeWidth="1.3"/>
-            <path d="M12.1 8.8l.9.5a.5.5 0 01.2.7l-1 1.7a.5.5 0 01-.7.2l-.9-.5c-.4.3-.9.5-1.4.7l-.1 1a.5.5 0 01-.5.4H7.4a.5.5 0 01-.5-.4l-.1-1c-.5-.2-1-.4-1.4-.7l-.9.5a.5.5 0 01-.7-.2l-1-1.7a.5.5 0 01.2-.7l.9-.5V6.2l-.9-.5a.5.5 0 01-.2-.7l1-1.7a.5.5 0 01.7-.2l.9.5c.4-.3.9-.5 1.4-.7l.1-1A.5.5 0 017.4 1.5h2a.5.5 0 01.5.4l.1 1c.5.2 1 .4 1.4.7l.9-.5a.5.5 0 01.7.2l1 1.7a.5.5 0 01-.2.7l-.9.5v2.6z" stroke="currentColor" strokeWidth="1.3"/>
-          </svg>
+          <GearSix size={15} />
           {!collapsed && <span style={{ fontSize: '11px', fontFamily: 'var(--font-ui)' }}>Settings</span>}
         </button>
         <button
@@ -162,13 +162,7 @@ export function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSessi
           onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-text-muted)')}
           onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text-subtle)')}
         >
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            {collapsed ? (
-              <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            ) : (
-              <path d="M10 4L6 8l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            )}
-          </svg>
+          {collapsed ? <CaretRight size={16} /> : <CaretLeft size={16} />}
         </button>
       </div>
     </div>

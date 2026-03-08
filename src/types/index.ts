@@ -2,6 +2,15 @@
 
 export type SessionStatus = 'complete-pass' | 'complete-fail' | 'in-progress'
 
+export type ClaudeAuthType = 'oauth' | 'apikey'
+
+export interface SettingsSummary {
+  claudeAuthType: ClaudeAuthType
+  claudeCredential: string
+  enabledDetectors: string[]
+  defaults: { maxRevisions: number; targetDetectionPct: number }
+}
+
 export interface Revision {
   label: string      // "Original" | "Rev 2 — 86% → 52%" etc.
   text: string
@@ -100,6 +109,9 @@ export interface SessionCompleteNode extends BaseNode {
   totalRewrites: number
   finalScore: number
   passed: boolean
+  interrupted?: boolean
+  expiredToken?: boolean
+  error?: string
   bestScore?: number   // if not passed, the best aggregate reached
 }
 

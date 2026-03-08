@@ -1,3 +1,4 @@
+import { ArrowDown } from '@phosphor-icons/react'
 import { RewriteNode as NodeType } from '../../types'
 import { TimelineNodeWrapper } from './TimelineNodeWrapper'
 
@@ -42,7 +43,7 @@ export function RewriteNode({ node, index }: Props) {
           marginBottom: '6px',
           fontFamily: 'var(--font-mono)',
         }}>
-          ↓
+          <ArrowDown size={12} />
         </div>
 
         {/* New sentence */}

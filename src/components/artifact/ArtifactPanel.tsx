@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { CaretLeft, CaretRight, Check, Copy } from '@phosphor-icons/react'
 import { Session } from '../../types'
 import { RevisionViewer } from './RevisionViewer'
 
@@ -61,13 +62,7 @@ export function ArtifactPanel({
         onMouseEnter={e => (e.currentTarget.style.color = 'var(--color-text-muted)')}
         onMouseLeave={e => (e.currentTarget.style.color = 'var(--color-text-subtle)')}
       >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          {open ? (
-            <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          ) : (
-            <path d="M8 2L4 6l4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          )}
-        </svg>
+        {open ? <CaretRight size={12} /> : <CaretLeft size={12} />}
       </button>
 
       <AnimatePresence>
@@ -196,7 +191,10 @@ export function ArtifactPanel({
                   transition: 'all 0.15s',
                 }}
               >
-                {copied ? '✓ Copied' : 'Copy'}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  {copied ? <Check size={12} /> : <Copy size={12} />}
+                  {copied ? 'Copied' : 'Copy'}
+                </span>
               </button>
             </div>
           </motion.div>
