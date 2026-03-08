@@ -10,6 +10,14 @@ interface Props {
 }
 
 export function SessionListItem({ session, isActive, collapsed, onClick }: Props) {
+  // For in-progress sessions, find the latest iteration number
+  const latestIteration = session.status === 'in-progress'
+    ? session.nodes.reduce((max, n) => n.type === 'ITERATION_START' ? Math.max(max, (n as { iterationNumber: number }).iterationNumber) : max, 0)
+    : 0
+  const maxRevisions = session.status === 'in-progress'
+    ? (session.nodes.find(n => n.type === 'ITERATION_START') as { maxRevisions?: number } | undefined)?.maxRevisions ?? 0
+    : 0
+
   const statusDot =
     session.status === 'in-progress'
       ? 'var(--color-accent)'
@@ -80,9 +88,17 @@ export function SessionListItem({ session, isActive, collapsed, onClick }: Props
             }}>
               {relativeTime(session.createdAt)}
             </span>
-            {session.status !== 'in-progress' && (
+            {session.status !== 'in-progress' ? (
               <ScoreBadge score={session.overallScore} />
-            )}
+            ) : latestIteration > 0 ? (
+              <span style={{
+                fontSize: '10px',
+                fontFamily: 'var(--font-mono)',
+                color: 'var(--color-accent)',
+              }}>
+                iter {latestIteration}/{maxRevisions}
+              </span>
+            ) : null}
           </div>
         </div>
       )}

@@ -157,10 +157,14 @@ export default function App() {
     setSessions(prev => prev.map(s => {
       if (s.id !== streamSessionId) return s
       const nodes = [...s.nodes]
-      // Replace CURRENTLY_RUNNING if the new node is also CURRENTLY_RUNNING
-      if (node.type === 'CURRENTLY_RUNNING' && nodes.length > 0 && nodes[nodes.length - 1].type === 'CURRENTLY_RUNNING') {
-        nodes[nodes.length - 1] = node
+      const lastIsRunning = nodes.length > 0 && nodes[nodes.length - 1].type === 'CURRENTLY_RUNNING'
+      if (node.type === 'CURRENTLY_RUNNING') {
+        // Replace previous CURRENTLY_RUNNING, or append if none
+        if (lastIsRunning) nodes[nodes.length - 1] = node
+        else nodes.push(node)
       } else {
+        // Real node arriving — remove the CURRENTLY_RUNNING placeholder first
+        if (lastIsRunning) nodes.pop()
         nodes.push(node)
       }
       return { ...s, nodes }
