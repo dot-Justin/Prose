@@ -140,6 +140,7 @@ export async function rewriteFullText(
     '- Cut superficial -ing endings (symbolizing, highlighting, reflecting)',
     '- Cut significance inflation (pivotal moment, vital role, testament to)',
     '- Add concrete specificity where text is vague',
+    '- Do NOT use markdown: no headers (#), no bold (**), no bullets, no em dashes — plain prose paragraphs only',
     '',
     `Style: ${style || 'General'}`,
   ]

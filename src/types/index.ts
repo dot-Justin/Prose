@@ -86,6 +86,7 @@ export interface RewriteNode extends BaseNode {
   // New (batch):
   rewrites?: Array<{ original: string; rewritten: string; pattern?: string }>
   isFullPass?: boolean
+  sentenceCount?: number  // for full-text passes, approximate count of affected sentences
   // Old (single) — compat with stored sessions:
   original?: string
   rewritten?: string

@@ -133,11 +133,9 @@ export async function runOrchestrator(
       if (newFullText !== workingText) {
         const oldSents = splitIntoSentences(workingText)
         const newSents = splitIntoSentences(newFullText)
-        const changedPairs = oldSents
-          .map((s, idx) => ({ original: s, rewritten: newSents[idx] ?? s, pattern: 'Full-text pass' }))
-          .filter(p => p.original !== p.rewritten)
+        const sentenceCount = Math.max(oldSents.length, newSents.length)
 
-        emitNode('REWRITE', { rewrites: changedPairs, isFullPass: true })
+        emitNode('REWRITE', { rewrites: [], isFullPass: true, sentenceCount })
 
         emitRunning(`Iteration ${i} — re-detecting…`)
         const newResults = await runAllDetectors(newFullText, enabledDetectors)
@@ -158,12 +156,12 @@ export async function runOrchestrator(
         if (fullPassKept) {
           workingText = newFullText
           lastResults = newResults
-          totalRewrites += changedPairs.length
+          totalRewrites += sentenceCount
           const afterScore2 = aggregate(lastResults, outliers)
           session.revisions.push({
             label: `Rev ${revNum++} — ${Math.round(prevAggScore)}% → ${Math.round(afterScore2)}%`,
             text: workingText,
-            changedSentences: changedPairs.map(p => p.rewritten),
+            changedSentences: newSents,
           })
           prevAggScore = afterScore2
           bestScore = Math.min(bestScore, afterScore2)
@@ -172,9 +170,8 @@ export async function runOrchestrator(
         // Outlier + pass check after full-text pass
         for (const result of lastResults) {
           if (outliers.has(result.name) || result.skipped || result.score === null) continue
-          const othersAllPass = lastResults
-            .filter(r => r.name !== result.name && !outliers.has(r.name) && !r.skipped && r.score !== null)
-            .every(r => (r.score ?? 0) <= targetDetectionPct)
+          const peers = lastResults.filter(r => r.name !== result.name && !outliers.has(r.name) && !r.skipped && r.score !== null)
+          const othersAllPass = peers.length >= 2 && peers.every(r => (r.score ?? 0) <= targetDetectionPct)
           if (result.score > targetDetectionPct && othersAllPass) {
             const streak = (failStreak.get(result.name) ?? 0) + 1
             failStreak.set(result.name, streak)
@@ -192,7 +189,7 @@ export async function runOrchestrator(
         const activeAfterFull = lastResults.filter(r => !outliers.has(r.name) && !r.skipped && r.score !== null)
         const scoreAfterFull = aggregate(lastResults, outliers)
         bestScore = Math.min(bestScore, scoreAfterFull)
-        if (activeAfterFull.every(r => (r.score ?? 0) <= targetDetectionPct)) {
+        if (activeAfterFull.length > 0 && activeAfterFull.every(r => (r.score ?? 0) <= targetDetectionPct)) {
           emitNode('SESSION_COMPLETE', {
             passed: true,
             beforeResults: toFrontendResults(beforeResults, targetDetectionPct),
@@ -356,9 +353,8 @@ export async function runOrchestrator(
     for (const result of lastResults) {
       if (outliers.has(result.name) || result.skipped || result.score === null) continue
 
-      const othersAllPass = lastResults
-        .filter(r => r.name !== result.name && !outliers.has(r.name) && !r.skipped && r.score !== null)
-        .every(r => (r.score ?? 0) <= targetDetectionPct)
+      const peers = lastResults.filter(r => r.name !== result.name && !outliers.has(r.name) && !r.skipped && r.score !== null)
+      const othersAllPass = peers.length >= 2 && peers.every(r => (r.score ?? 0) <= targetDetectionPct)
 
       if (result.score > targetDetectionPct && othersAllPass) {
         const streak = (failStreak.get(result.name) ?? 0) + 1
@@ -380,7 +376,7 @@ export async function runOrchestrator(
     const currentScore = aggregate(lastResults, outliers)
     bestScore = Math.min(bestScore, currentScore)
 
-    if (activeResults.every(r => (r.score ?? 0) <= targetDetectionPct)) {
+    if (activeResults.length > 0 && activeResults.every(r => (r.score ?? 0) <= targetDetectionPct)) {
       emitNode('SESSION_COMPLETE', {
         passed: true,
         beforeResults: toFrontendResults(beforeResults, targetDetectionPct),

@@ -72,7 +72,16 @@ export function RewriteNode({ node, index }: Props) {
           }
         </div>
 
-        {pairs.map((pair, i) => (
+        {node.isFullPass && pairs.length === 0 ? (
+          <div style={{
+            fontSize: '12px',
+            color: 'var(--color-text-subtle)',
+            fontFamily: 'var(--font-mono)',
+            fontStyle: 'italic',
+          }}>
+            Entire text rewritten{node.sentenceCount ? ` (~${node.sentenceCount} sentences)` : ''} — see artifact panel for diff
+          </div>
+        ) : pairs.map((pair, i) => (
           <div key={i}>
             <RewritePair original={pair.original} rewritten={pair.rewritten ?? pair.original} />
             {i < pairs.length - 1 && (
