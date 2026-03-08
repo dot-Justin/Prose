@@ -17,13 +17,15 @@ export function truncateTitle(text: string, maxLen = 40): string {
   return trimmed.length > maxLen ? trimmed.slice(0, maxLen).trimEnd() + '…' : trimmed
 }
 
-export function scoreToColor(score: number): string {
+export function scoreToColor(score: number | null): string {
+  if (score === null) return 'var(--color-text-subtle)'
   if (score < 25) return 'var(--color-green)'
   if (score <= 60) return 'var(--color-yellow)'
   return 'var(--color-red)'
 }
 
-export function scoreLabel(score: number): string {
+export function scoreLabel(score: number | null): string {
+  if (score === null) return '—'
   return `${Math.round(score)}%`
 }
 

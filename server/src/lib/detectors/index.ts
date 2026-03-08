@@ -44,10 +44,10 @@ export function toFrontendResults(
   results: DetectorResult[],
   targetPct: number,
   outliers: Set<string> = new Set(),
-): Array<{ name: string; score: number; pass: boolean; skipped?: boolean }> {
+): Array<{ name: string; score: number | null; pass: boolean; skipped?: boolean }> {
   return results.map(r => ({
     name: r.name,
-    score: r.score ?? 0,
+    score: r.skipped ? null : (r.score ?? 0),
     pass: !outliers.has(r.name) && r.score !== null && r.score <= targetPct,
     skipped: r.skipped,
   }))

@@ -56,7 +56,7 @@ export interface SessionStartedNode extends BaseNode {
 
 export interface DetectorResult {
   name: string
-  score: number   // 0-100, or 0 when skipped
+  score: number | null  // null when skipped
   pass: boolean
   skipped?: boolean
 }

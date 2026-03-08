@@ -83,14 +83,19 @@ export function SessionCompleteNode({ node, index }: Props) {
           <tbody>
             {node.beforeResults.map((before, i) => {
               const after = node.afterResults[i]
+              const isSkipped = before.skipped || after.skipped
               return (
-                <tr key={before.name} style={{ borderBottom: '1px solid var(--color-border)22' }}>
+                <tr key={before.name} style={{ borderBottom: '1px solid var(--color-border)22', opacity: isSkipped ? 0.5 : 1 }}>
                   <td style={{ padding: '5px 8px', color: 'var(--color-text-muted)' }}>{before.name}</td>
                   <td style={{ padding: '5px 8px', textAlign: 'right', color: scoreToColor(before.score) }}>
-                    {scoreLabel(before.score)}
+                    {before.skipped
+                      ? <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)' }}>ERR</span>
+                      : scoreLabel(before.score)}
                   </td>
                   <td style={{ padding: '5px 8px', textAlign: 'right', color: scoreToColor(after.score), fontWeight: 600 }}>
-                    {scoreLabel(after.score)}
+                    {after.skipped
+                      ? <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)' }}>ERR</span>
+                      : scoreLabel(after.score)}
                   </td>
                 </tr>
               )
