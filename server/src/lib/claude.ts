@@ -112,6 +112,7 @@ export async function rewriteSentence(
   requirements: string,
   skillMd: string,
   settings: Settings,
+  previousRewrites: string[] = [],
 ): Promise<RewriteResult> {
   const client = makeClient(settings)
 
@@ -124,13 +125,18 @@ export async function rewriteSentence(
     `Target sentence flagged by detectors:\n"${targetSentence}"`,
   ]
   if (suggestion) lines.push('', `youscan suggestion: "${suggestion}"`)
+  if (previousRewrites.length > 0) {
+    lines.push('', 'Previous rewrite attempts on this sentence FAILED to reduce detection scores:')
+    for (const prev of previousRewrites) lines.push(`  - "${prev}"`)
+    lines.push('Make a FUNDAMENTALLY DIFFERENT structural choice — restructure, reframe, split into two sentences, change perspective, or alter construction and rhythm entirely. Do NOT produce minor variations of the previous attempts.')
+  }
   lines.push('', `Style: ${style || 'General'}`)
   if (requirements) lines.push(`Requirements: ${requirements}`)
   lines.push('', 'Rewrite ONLY the target sentence — do not change anything else. Submit using submit_rewrite.')
 
   const msg = await client.messages.create({
     model: 'claude-sonnet-4-6',
-    max_tokens: 500,
+    max_tokens: 1024,
     system: skillMd,
     tools: [REWRITE_TOOL],
     tool_choice: { type: 'any' },

@@ -109,12 +109,14 @@ export async function runOrchestrator(
 
   // ── Iteration loop ──────────────────────────────────────────────────────────
   const revertCounts = new Map<string, number>()
+  const attemptCounts = new Map<string, number>()
+  const previousRewrites = new Map<string, string[]>()
 
   for (let i = 1; i <= maxRevisions; i++) {
     emitRunning(`Iteration ${i} — selecting target sentence…`)
 
     const skipSentences = new Set(
-      [...revertCounts.entries()]
+      [...attemptCounts.entries()]
         .filter(([, count]) => count >= 2)
         .map(([s]) => s)
     )
@@ -131,6 +133,9 @@ export async function runOrchestrator(
     // ── Rewrite ───────────────────────────────────────────────────────────────
     emitRunning(`Iteration ${i} — rewriting with Claude…`)
 
+    // Track attempts per sentence
+    attemptCounts.set(target.sentence, (attemptCounts.get(target.sentence) ?? 0) + 1)
+
     let rewritten: string
     let pattern: string
     try {
@@ -142,6 +147,7 @@ export async function runOrchestrator(
         requirements,
         skillMd,
         settings,
+        previousRewrites.get(target.sentence) ?? [],
       )
       rewritten = result.rewritten
       pattern = result.pattern
@@ -194,7 +200,8 @@ export async function runOrchestrator(
 
     const improved = deltas.filter(d => d.after < d.before).length
     const worsened = deltas.filter(d => d.after > d.before).length
-    const kept = improved >= worsened
+    // Require at least 1 improvement; treat 0/0 as a revert (no-op)
+    const kept = improved > 0 && improved >= worsened
 
     emitNode('REDETECT_RESULT', {
       deltas,
@@ -205,6 +212,11 @@ export async function runOrchestrator(
     if (!kept) {
       revertCounts.set(target.sentence, (revertCounts.get(target.sentence) ?? 0) + 1)
     }
+
+    // Track this rewrite for future attempts on the same sentence
+    const existing = previousRewrites.get(target.sentence) ?? []
+    if (rewritten !== target.sentence) existing.push(rewritten)
+    previousRewrites.set(target.sentence, existing)
 
     if (kept) {
       workingText = candidateText
