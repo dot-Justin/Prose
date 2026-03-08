@@ -50,11 +50,24 @@ function buildRevisions(inputText: string, nodes: TimelineNode[]): Revision[] {
       prevScore = node.overallScore
     }
     if (node.type === 'REWRITE') {
-      pendingRewrite = { original: node.original, rewritten: node.rewritten }
+      if (node.rewrites) {
+        pendingRewrite = { original: node.rewrites[0]?.original ?? '', rewritten: node.rewrites[0]?.rewritten ?? '' }
+        // Store all pairs for multi-sentence apply
+        ;(pendingRewrite as { original: string; rewritten: string; all?: Array<{ original: string; rewritten: string }> }).all = node.rewrites.map(r => ({ original: r.original, rewritten: r.rewritten ?? r.original }))
+      } else {
+        pendingRewrite = { original: node.original ?? '', rewritten: node.rewritten ?? '' }
+      }
     }
     if (node.type === 'REDETECT_RESULT' && pendingRewrite) {
       if (node.kept) {
-        workingText = workingText.replace(pendingRewrite.original, pendingRewrite.rewritten)
+        const all = (pendingRewrite as { original: string; rewritten: string; all?: Array<{ original: string; rewritten: string }> }).all ?? [pendingRewrite]
+        const changedSentences: string[] = []
+        for (const r of all) {
+          if (r.original !== r.rewritten) {
+            workingText = workingText.replace(r.original, r.rewritten)
+            changedSentences.push(r.rewritten)
+          }
+        }
         const afterDeltas = node.deltas
         const afterScore = afterDeltas.length > 0
           ? afterDeltas.reduce((sum, d) => sum + d.after, 0) / afterDeltas.length
@@ -62,7 +75,7 @@ function buildRevisions(inputText: string, nodes: TimelineNode[]): Revision[] {
         revisions.push({
           label: `Rev ${revNum++} — ${Math.round(prevScore)}% → ${Math.round(afterScore)}%`,
           text: workingText,
-          changedSentences: [pendingRewrite.rewritten],
+          changedSentences,
         })
         prevScore = afterScore
       }

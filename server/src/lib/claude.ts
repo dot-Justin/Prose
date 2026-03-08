@@ -104,6 +104,22 @@ const REWRITE_TOOL: Anthropic.Tool = {
   },
 }
 
+async function withRateLimitRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      if (err instanceof Anthropic.RateLimitError && attempt < maxRetries) {
+        const delay = Math.min(2 ** attempt * 2000, 30000)
+        await new Promise(r => setTimeout(r, delay))
+        continue
+      }
+      throw err
+    }
+  }
+  throw new Error('unreachable')
+}
+
 export async function rewriteSentence(
   workingText: string,
   targetSentence: string,
@@ -134,14 +150,14 @@ export async function rewriteSentence(
   if (requirements) lines.push(`Requirements: ${requirements}`)
   lines.push('', 'Rewrite ONLY the target sentence — do not change anything else. Submit using submit_rewrite.')
 
-  const msg = await client.messages.create({
+  const msg = await withRateLimitRetry(() => client.messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     system: skillMd,
     tools: [REWRITE_TOOL],
     tool_choice: { type: 'any' },
     messages: [{ role: 'user', content: lines.join('\n') }],
-  })
+  }))
 
   const toolUse = msg.content.find(b => b.type === 'tool_use')
   if (toolUse?.type === 'tool_use') {

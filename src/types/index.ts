@@ -73,15 +73,21 @@ export interface IterationStartNode extends BaseNode {
   type: 'ITERATION_START'
   iterationNumber: number
   maxRevisions: number
-  targetSentence: string
-  flaggedBy: string[]
-  suggestion: string   // youscan suggestion, may be empty
+  // New (batch):
+  targets?: Array<{ sentence: string; flaggedBy: string[]; suggestion: string }>
+  // Old (single) — compat with stored sessions:
+  targetSentence?: string
+  flaggedBy?: string[]
+  suggestion?: string
 }
 
 export interface RewriteNode extends BaseNode {
   type: 'REWRITE'
-  original: string
-  rewritten: string
+  // New (batch):
+  rewrites?: Array<{ original: string; rewritten: string; pattern?: string }>
+  // Old (single) — compat with stored sessions:
+  original?: string
+  rewritten?: string
 }
 
 export interface ScoreDelta {

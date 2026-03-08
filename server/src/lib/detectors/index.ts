@@ -66,21 +66,12 @@ export function splitIntoSentences(text: string): string[] {
     .filter(s => s.length > 10)
 }
 
-export function pickTargetSentence(
-  workingText: string,
+function computeSentenceWeights(
+  sentences: string[],
   results: DetectorResult[],
   targetPct: number,
   outliers: Set<string>,
-  skipSentences: Set<string> = new Set(),
-): TargetSentence {
-  const allSentences = splitIntoSentences(workingText)
-  if (allSentences.length === 0) {
-    return { sentence: workingText, flaggedBy: [], suggestion: '' }
-  }
-
-  let sentences = allSentences.filter(s => !skipSentences.has(s))
-  if (sentences.length === 0) sentences = allSentences  // fallback: ignore skips
-
+): Map<string, { weight: number; flaggedBy: string[] }> {
   const scoreMap = new Map<string, { weight: number; flaggedBy: string[] }>()
   for (const s of sentences) {
     scoreMap.set(s, { weight: 0, flaggedBy: [] })
@@ -88,9 +79,8 @@ export function pickTargetSentence(
 
   for (const result of results) {
     if (outliers.has(result.name) || result.skipped || result.score === null) continue
-    if (result.score <= targetPct) continue  // this detector already passing
+    if (result.score <= targetPct) continue
 
-    // NoteGPT: substring match against flaggedSentences (binary, no per-sentence score)
     for (const flagged of result.flaggedSentences ?? []) {
       const match = sentences.find(s => s.includes(flagged) || flagged.includes(s))
       if (match) {
@@ -100,7 +90,6 @@ export function pickTargetSentence(
       }
     }
 
-    // decopy: per-sentence score > 0.7, weight by actual score
     for (const s of result.sentences ?? []) {
       if (s.score > 0.7) {
         const match = sentences.find(sen => sen.includes(s.content.trim()) || s.content.includes(sen.trim()))
@@ -112,7 +101,6 @@ export function pickTargetSentence(
       }
     }
 
-    // AIDetector: per-sentence ai_probability > targetPct, weight by actual probability
     for (const s of result.aiDetectorSentences ?? []) {
       if (s.ai_probability > targetPct) {
         const match = sentences.find(sen => sen.includes(s.text.trim()) || s.text.includes(sen.trim()))
@@ -125,30 +113,56 @@ export function pickTargetSentence(
     }
   }
 
-  // Find top sentence (highest weight, tie-break by position)
-  let topSentence = sentences[0]
-  let topEntry = scoreMap.get(topSentence) ?? { weight: 0, flaggedBy: [] }
+  return scoreMap
+}
 
-  for (const [s, entry] of scoreMap.entries()) {
-    if (entry.weight > topEntry.weight) {
-      topSentence = s
-      topEntry = entry
-    }
+export function pickTopNSentences(
+  workingText: string,
+  results: DetectorResult[],
+  targetPct: number,
+  outliers: Set<string>,
+  skipSentences: Set<string> = new Set(),
+  n: number = 1,
+): TargetSentence[] {
+  const allSentences = splitIntoSentences(workingText)
+  if (allSentences.length === 0) {
+    return [{ sentence: workingText, flaggedBy: [], suggestion: '' }]
   }
 
-  // Find best youscan suggestion for this sentence
+  let sentences = allSentences.filter(s => !skipSentences.has(s))
+  if (sentences.length === 0) sentences = allSentences
+
+  const scoreMap = computeSentenceWeights(sentences, results, targetPct, outliers)
   const youscanResult = results.find(r => r.name === 'youscan')
-  const suggestion = youscanResult?.suggestions?.find(
-    s => topSentence.includes(s.original_phrase) || s.original_phrase.includes(topSentence.slice(0, 30)),
-  )?.more_human_alternative ?? ''
+  const fallbackFlaggedBy = results
+    .filter(r => !r.skipped && r.score !== null && r.score > targetPct && !outliers.has(r.name))
+    .map(r => r.name)
 
-  return {
-    sentence: topSentence,
-    flaggedBy: topEntry.flaggedBy.length > 0 ? topEntry.flaggedBy : results
-      .filter(r => !r.skipped && r.score !== null && r.score > targetPct && !outliers.has(r.name))
-      .map(r => r.name),
-    suggestion,
-  }
+  // Sort by weight desc (stable: preserve original order for ties)
+  const sorted = sentences
+    .map((s, i) => ({ s, i, entry: scoreMap.get(s) ?? { weight: 0, flaggedBy: [] } }))
+    .sort((a, b) => b.entry.weight - a.entry.weight || a.i - b.i)
+
+  return sorted.slice(0, n).map(({ s, entry }) => {
+    const suggestion = youscanResult?.suggestions?.find(
+      sg => s.includes(sg.original_phrase) || sg.original_phrase.includes(s.slice(0, 30)),
+    )?.more_human_alternative ?? ''
+    return {
+      sentence: s,
+      flaggedBy: entry.flaggedBy.length > 0 ? entry.flaggedBy : fallbackFlaggedBy,
+      suggestion,
+    }
+  })
+}
+
+export function pickTargetSentence(
+  workingText: string,
+  results: DetectorResult[],
+  targetPct: number,
+  outliers: Set<string>,
+  skipSentences: Set<string> = new Set(),
+): TargetSentence {
+  return pickTopNSentences(workingText, results, targetPct, outliers, skipSentences, 1)[0]
 }
 
 export { checkAIDetectorQuota } from './aidetector'

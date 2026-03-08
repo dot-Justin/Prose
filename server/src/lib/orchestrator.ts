@@ -6,9 +6,11 @@ import {
   runAllDetectors,
   aggregate,
   toFrontendResults,
-  pickTargetSentence,
+  pickTopNSentences,
   DetectorResult,
 } from './detectors/index'
+
+const BATCH_SIZE = 5
 
 const skillMd = loadSkillMd()
 
@@ -113,44 +115,42 @@ export async function runOrchestrator(
   const previousRewrites = new Map<string, string[]>()
 
   for (let i = 1; i <= maxRevisions; i++) {
-    emitRunning(`Iteration ${i} — selecting target sentence…`)
+    emitRunning(`Iteration ${i} — selecting target sentences…`)
 
     const skipSentences = new Set(
       [...attemptCounts.entries()]
         .filter(([, count]) => count >= 2)
         .map(([s]) => s)
     )
-    const target = pickTargetSentence(workingText, lastResults, targetDetectionPct, outliers, skipSentences)
+    const targets = pickTopNSentences(workingText, lastResults, targetDetectionPct, outliers, skipSentences, BATCH_SIZE)
+
+    for (const t of targets) {
+      attemptCounts.set(t.sentence, (attemptCounts.get(t.sentence) ?? 0) + 1)
+    }
 
     emitNode('ITERATION_START', {
       iterationNumber: i,
       maxRevisions,
-      targetSentence: target.sentence,
-      flaggedBy: target.flaggedBy,
-      suggestion: target.suggestion,
+      targets: targets.map(t => ({ sentence: t.sentence, flaggedBy: t.flaggedBy, suggestion: t.suggestion })),
     })
 
-    // ── Rewrite ───────────────────────────────────────────────────────────────
+    // ── Rewrite all targets in parallel ───────────────────────────────────────
     emitRunning(`Iteration ${i} — rewriting with Claude…`)
 
-    // Track attempts per sentence
-    attemptCounts.set(target.sentence, (attemptCounts.get(target.sentence) ?? 0) + 1)
-
-    let rewritten: string
-    let pattern: string
+    let rewriteResults: Array<{ rewritten: string; pattern: string }>
     try {
-      const result = await rewriteSentence(
-        workingText,
-        target.sentence,
-        target.suggestion,
-        style,
-        requirements,
-        skillMd,
-        settings,
-        previousRewrites.get(target.sentence) ?? [],
+      rewriteResults = await Promise.all(
+        targets.map(t => rewriteSentence(
+          workingText,
+          t.sentence,
+          t.suggestion,
+          style,
+          requirements,
+          skillMd,
+          settings,
+          previousRewrites.get(t.sentence) ?? [],
+        ))
       )
-      rewritten = result.rewritten
-      pattern = result.pattern
     } catch (err) {
       const expiredToken = isClaudeAuthError(err)
       if (expiredToken) {
@@ -174,19 +174,25 @@ export async function runOrchestrator(
       return
     }
 
-    emitNode('REWRITE', {
-      original: target.sentence,
-      rewritten,
-      pattern,
-    })
+    const rewrites = targets.map((t, idx) => ({
+      original: t.sentence,
+      rewritten: rewriteResults[idx].rewritten,
+      pattern: rewriteResults[idx].pattern,
+    }))
 
-    // ── Re-detect ─────────────────────────────────────────────────────────────
-    const candidateText = workingText.replace(target.sentence, rewritten)
+    emitNode('REWRITE', { rewrites })
+
+    // ── Apply all rewrites to candidate, then re-detect once ─────────────────
+    let candidateText = workingText
+    for (const r of rewrites) {
+      if (r.rewritten !== r.original) {
+        candidateText = candidateText.replace(r.original, r.rewritten)
+      }
+    }
+
     emitRunning(`Iteration ${i} — re-detecting…`)
-
     const newResults = await runAllDetectors(candidateText, enabledDetectors)
 
-    // Compute deltas (only non-skipped, non-outlier detectors)
     const deltas = lastResults
       .filter(r => !outliers.has(r.name) && r.score !== null)
       .map(r => {
@@ -200,8 +206,9 @@ export async function runOrchestrator(
 
     const improved = deltas.filter(d => d.after < d.before).length
     const worsened = deltas.filter(d => d.after > d.before).length
-    // Require at least 1 improvement; treat 0/0 as a revert (no-op)
-    const kept = improved > 0 && improved >= worsened
+    const newAgg = aggregate(newResults, outliers)
+    const oldAgg = aggregate(lastResults, outliers)
+    const kept = newAgg < oldAgg
 
     emitNode('REDETECT_RESULT', {
       deltas,
@@ -209,26 +216,36 @@ export async function runOrchestrator(
       summary: `${improved} improved, ${worsened} worsened`,
     })
 
-    if (!kept) {
-      revertCounts.set(target.sentence, (revertCounts.get(target.sentence) ?? 0) + 1)
+    // Track rewrites per sentence
+    for (const r of rewrites) {
+      const prev = previousRewrites.get(r.original) ?? []
+      if (r.rewritten !== r.original) previousRewrites.set(r.original, [...prev, r.rewritten])
+      if (!kept) {
+        revertCounts.set(r.original, (revertCounts.get(r.original) ?? 0) + 1)
+      }
     }
-
-    // Track this rewrite for future attempts on the same sentence
-    const existing = previousRewrites.get(target.sentence) ?? []
-    if (rewritten !== target.sentence) existing.push(rewritten)
-    previousRewrites.set(target.sentence, existing)
 
     if (kept) {
       workingText = candidateText
       lastResults = newResults
-      totalRewrites++
+      const changedSentences = rewrites.filter(r => r.rewritten !== r.original).map(r => r.rewritten)
+      totalRewrites += changedSentences.length
       const afterScore = aggregate(lastResults, outliers)
 
-      // Add revision
+      // Transfer attempt counts to new sentence text so skip logic fires correctly next iteration
+      for (const r of rewrites) {
+        if (r.rewritten !== r.original) {
+          const count = attemptCounts.get(r.original) ?? 0
+          attemptCounts.delete(r.original)
+          attemptCounts.set(r.rewritten, count)
+          previousRewrites.delete(r.original)
+        }
+      }
+
       const revision: StoredRevision = {
         label: `Rev ${revNum++} — ${Math.round(prevAggScore)}% → ${Math.round(afterScore)}%`,
         text: workingText,
-        changedSentences: [rewritten],
+        changedSentences,
       }
       session.revisions.push(revision)
       prevAggScore = afterScore
