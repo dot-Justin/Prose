@@ -1,5 +1,6 @@
 ﻿# uncategorized
 .claude/
+opencode.json
 
 # dependencies
 node_modules/
@@ -47,4 +48,3 @@ Thumbs.db
 
 # runtime data
 data/
-
