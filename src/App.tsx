@@ -236,7 +236,7 @@ export default function App() {
         status: 'in-progress',
         overallScore: 0,
         nodes: [],
-        revisions: [{ label: 'Original', text: data.inputText, changedSentences: [] }],
+        revisions: [],
       }
 
       setInputTexts(prev => ({ ...prev, [id]: data.inputText }))

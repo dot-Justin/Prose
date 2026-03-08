@@ -11,7 +11,7 @@ export function DetectionRunNode({ node, index }: Props) {
   const [expanded, setExpanded] = useState(false)
   const hasAnimated = useRef(false)
 
-  const failCount = node.results.filter(r => !r.pass).length
+  const failCount = node.results.filter(r => !r.pass && !r.skipped).length
   const detectorNames = node.results.slice(0, 3).map(r => r.name).join(' · ')
 
   function handleExpand() {
@@ -102,43 +102,47 @@ export function DetectionRunNode({ node, index }: Props) {
               </thead>
               <tbody>
                 {node.results.map(result => {
-                  const color = scoreToColor(result.score)
+                  const color = result.skipped ? 'var(--color-text-subtle)' : scoreToColor(result.score)
                   return (
-                    <tr key={result.name} style={{ borderBottom: '1px solid var(--color-border)22' }}>
+                    <tr key={result.name} style={{ borderBottom: '1px solid var(--color-border)22', opacity: result.skipped ? 0.5 : 1 }}>
                       <td style={{ padding: '6px 8px', color: 'var(--color-text-muted)' }}>
                         {result.name}
                       </td>
                       <td style={{ padding: '6px 8px' }}>
-                        <div style={{
-                          width: '100px',
-                          height: '4px',
-                          background: 'var(--color-surface-2)',
-                          borderRadius: '2px',
-                          overflow: 'hidden',
-                          marginLeft: 'auto',
-                        }}>
-                          <motion.div
-                            initial={{ width: hasAnimated.current ? `${result.score}%` : '0%' }}
-                            animate={{ width: `${result.score}%` }}
-                            transition={{ duration: 0.6, ease: 'easeOut', delay: 0.05 }}
-                            style={{
-                              height: '100%',
-                              background: color,
-                              borderRadius: '2px',
-                            }}
-                          />
-                        </div>
+                        {!result.skipped && (
+                          <div style={{
+                            width: '100px',
+                            height: '4px',
+                            background: 'var(--color-surface-2)',
+                            borderRadius: '2px',
+                            overflow: 'hidden',
+                            marginLeft: 'auto',
+                          }}>
+                            <motion.div
+                              initial={{ width: hasAnimated.current ? `${result.score}%` : '0%' }}
+                              animate={{ width: `${result.score}%` }}
+                              transition={{ duration: 0.6, ease: 'easeOut', delay: 0.05 }}
+                              style={{
+                                height: '100%',
+                                background: color,
+                                borderRadius: '2px',
+                              }}
+                            />
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding: '6px 8px', textAlign: 'right', color, fontWeight: 600 }}>
-                        {scoreLabel(result.score)}
+                        {result.skipped ? '—' : scoreLabel(result.score)}
                       </td>
-                        <td style={{ padding: '6px 8px', textAlign: 'right' }}>
-                          {result.pass ? (
-                            <CheckCircle size={14} color="var(--color-green)" />
-                          ) : (
-                            <XCircle size={14} color="var(--color-red)" />
-                          )}
-                        </td>
+                      <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                        {result.skipped ? (
+                          <span style={{ fontSize: '10px', fontFamily: 'var(--font-mono)', color: 'var(--color-text-subtle)' }}>ERR</span>
+                        ) : result.pass ? (
+                          <CheckCircle size={14} color="var(--color-green)" />
+                        ) : (
+                          <XCircle size={14} color="var(--color-red)" />
+                        )}
+                      </td>
                     </tr>
                   )
                 })}
