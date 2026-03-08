@@ -108,10 +108,17 @@ export async function runOrchestrator(
   }
 
   // ── Iteration loop ──────────────────────────────────────────────────────────
+  const revertCounts = new Map<string, number>()
+
   for (let i = 1; i <= maxRevisions; i++) {
     emitRunning(`Iteration ${i} — selecting target sentence…`)
 
-    const target = pickTargetSentence(workingText, lastResults, targetDetectionPct, outliers)
+    const skipSentences = new Set(
+      [...revertCounts.entries()]
+        .filter(([, count]) => count >= 2)
+        .map(([s]) => s)
+    )
+    const target = pickTargetSentence(workingText, lastResults, targetDetectionPct, outliers, skipSentences)
 
     emitNode('ITERATION_START', {
       iterationNumber: i,
@@ -194,6 +201,10 @@ export async function runOrchestrator(
       kept,
       summary: `${improved} improved, ${worsened} worsened`,
     })
+
+    if (!kept) {
+      revertCounts.set(target.sentence, (revertCounts.get(target.sentence) ?? 0) + 1)
+    }
 
     if (kept) {
       workingText = candidateText

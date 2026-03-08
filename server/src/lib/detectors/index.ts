@@ -71,11 +71,15 @@ export function pickTargetSentence(
   results: DetectorResult[],
   targetPct: number,
   outliers: Set<string>,
+  skipSentences: Set<string> = new Set(),
 ): TargetSentence {
-  const sentences = splitIntoSentences(workingText)
-  if (sentences.length === 0) {
+  const allSentences = splitIntoSentences(workingText)
+  if (allSentences.length === 0) {
     return { sentence: workingText, flaggedBy: [], suggestion: '' }
   }
+
+  let sentences = allSentences.filter(s => !skipSentences.has(s))
+  if (sentences.length === 0) sentences = allSentences  // fallback: ignore skips
 
   const scoreMap = new Map<string, { flagCount: number; flaggedBy: string[] }>()
   for (const s of sentences) {

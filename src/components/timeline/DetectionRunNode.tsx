@@ -12,6 +12,7 @@ export function DetectionRunNode({ node, index }: Props) {
   const hasAnimated = useRef(false)
 
   const failCount = node.results.filter(r => !r.pass && !r.skipped).length
+  const errorCount = node.results.filter(r => r.skipped).length
   const detectorNames = node.results.slice(0, 3).map(r => r.name).join(' · ')
 
   function handleExpand() {
@@ -58,6 +59,11 @@ export function DetectionRunNode({ node, index }: Props) {
               </span>
               {' · '}
               <span>{failCount}/{node.results.length} failing</span>
+              {errorCount > 0 && (
+                <span style={{ color: 'var(--color-text-subtle)' }}>
+                  {' · '}{errorCount} errored
+                </span>
+              )}
               {!expanded && (
                 <span style={{ color: 'var(--color-text-subtle)', marginLeft: '4px' }}>
                   · {detectorNames} …
