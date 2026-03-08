@@ -3,11 +3,12 @@
   "mcp": {
     "shadcn": {
       "type": "local",
-      "command": [
-        "npx",
-        "shadcn@latest",
-        "mcp"
-      ],
+      "command": ["npx", "shadcn@latest", "mcp"],
+      "enabled": true
+    },
+    "chakra-ui": {
+      "type": "local",
+      "command": ["npx", "-y", "@chakra-ui/react-mcp"],
       "enabled": true
     }
   }
