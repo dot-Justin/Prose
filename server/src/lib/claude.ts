@@ -2,6 +2,7 @@ import fs from 'fs'
 import path from 'path'
 import Anthropic from '@anthropic-ai/sdk'
 import { Settings } from './storage'
+import { DetectorResult } from './detectors/types'
 
 const FALLBACK_SKILL_MD = 'Rewrite the sentence to sound like a human wrote it. Vary sentence length, remove AI vocabulary (utilize→use, leverage→use, delve, etc.), and break predictable rhythm.'
 
@@ -120,6 +121,26 @@ async function withRateLimitRetry<T>(fn: () => Promise<T>, maxRetries = 3): Prom
   throw new Error('unreachable')
 }
 
+function buildDetectorStatusBlock(results: DetectorResult[], targetPct: number, outliers: Set<string> = new Set()): string {
+  const active = results
+    .filter(r => !outliers.has(r.name) && !r.skipped && r.score !== null)
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+  if (active.length === 0) return ''
+  const primaryBlocker = active.find(r => (r.score ?? 0) > targetPct)
+  const lines = [`Current detector scores (target: ${targetPct}%):`, '']
+  for (const r of active) {
+    const pct = Math.round(r.score ?? 0)
+    const passing = pct <= targetPct
+    const marker = r === primaryBlocker ? ' ← primary blocker' : passing ? ' (passing)' : ''
+    lines.push(`- ${r.name}: ${pct}%${marker}`)
+  }
+  if (primaryBlocker) {
+    lines.push('')
+    lines.push(`The primary blocker is ${primaryBlocker.name}. Prioritize breaking the patterns it targets: formal academic register, smooth logical transitions (consequently/therefore/thus), passive constructions, copula avoidance, and characteristic AI vocabulary.`)
+  }
+  return lines.join('\n')
+}
+
 export async function rewriteFullText(
   workingText: string,
   currentScore: number,
@@ -127,8 +148,12 @@ export async function rewriteFullText(
   requirements: string,
   skillMd: string,
   settings: Settings,
+  detectorResults: DetectorResult[] = [],
+  targetPct: number = 25,
+  outliers: Set<string> = new Set(),
 ): Promise<string> {
   const client = makeClient(settings)
+  const statusBlock = buildDetectorStatusBlock(detectorResults, targetPct, outliers)
   const lines = [
     `This text scores ~${Math.round(currentScore)}% on AI detectors. Apply ALL humanizer patterns to rewrite it completely. Be aggressive:`,
     '',
@@ -145,6 +170,7 @@ export async function rewriteFullText(
     `Style: ${style || 'General'}`,
   ]
   if (requirements) lines.push(`Requirements: ${requirements}`)
+  if (statusBlock) lines.push('', statusBlock)
   lines.push('', 'Return ONLY the rewritten text. No explanation.', '', 'Text:', '"""', workingText, '"""')
 
   const msg = await withRateLimitRetry(() => client.messages.create({
@@ -167,8 +193,12 @@ export async function rewriteSentence(
   skillMd: string,
   settings: Settings,
   previousRewrites: string[] = [],
+  detectorResults: DetectorResult[] = [],
+  targetPct: number = 25,
+  outliers: Set<string> = new Set(),
 ): Promise<RewriteResult> {
   const client = makeClient(settings)
+  const statusBlock = buildDetectorStatusBlock(detectorResults, targetPct, outliers)
 
   const lines = [
     'Full text:',
@@ -178,7 +208,8 @@ export async function rewriteSentence(
     '',
     `Target sentence flagged by detectors:\n"${targetSentence}"`,
   ]
-  if (suggestion) lines.push('', `youscan suggestion: "${suggestion}"`)
+  if (statusBlock) lines.push('', statusBlock)
+  if (suggestion) lines.push('', `youscan direction (use as inspiration for what to change, not literal wording — match the ${style || 'General'} register): "${suggestion}"`)
   if (previousRewrites.length > 0) {
     lines.push('', 'Previous rewrite attempts on this sentence FAILED to reduce detection scores:')
     for (const prev of previousRewrites) lines.push(`  - "${prev}"`)

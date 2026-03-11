@@ -125,7 +125,7 @@ export async function runOrchestrator(
       const currentAgg = aggregate(lastResults, outliers)
       let newFullText = workingText
       try {
-        newFullText = await rewriteFullText(workingText, currentAgg, style, requirements, skillMd, settings)
+        newFullText = await rewriteFullText(workingText, currentAgg, style, requirements, skillMd, settings, lastResults, targetDetectionPct, outliers)
       } catch (_err) {
         // fall through to normal sentence pass
       }
@@ -240,6 +240,9 @@ export async function runOrchestrator(
           skillMd,
           settings,
           previousRewrites.get(t.sentence) ?? [],
+          lastResults,
+          targetDetectionPct,
+          outliers,
         ))
       )
     } catch (err) {

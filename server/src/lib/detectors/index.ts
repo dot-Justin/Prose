@@ -81,11 +81,14 @@ function computeSentenceWeights(
     if (outliers.has(result.name) || result.skipped || result.score === null) continue
     if (result.score <= targetPct) continue
 
+    // Scale each detector's contribution by how bad its score is (90% detector = full weight, 30% = 30%)
+    const multiplier = (result.score ?? 0) / 100
+
     for (const flagged of result.flaggedSentences ?? []) {
       const match = sentences.find(s => s.includes(flagged) || flagged.includes(s))
       if (match) {
         const entry = scoreMap.get(match)!
-        entry.weight += 50
+        entry.weight += Math.round(50 * multiplier)
         if (!entry.flaggedBy.includes(result.name)) entry.flaggedBy.push(result.name)
       }
     }
@@ -95,7 +98,7 @@ function computeSentenceWeights(
         const match = sentences.find(sen => sen.includes(s.content.trim()) || s.content.includes(sen.trim()))
         if (match) {
           const entry = scoreMap.get(match)!
-          entry.weight += Math.round(s.score * 100)
+          entry.weight += Math.round(s.score * 100 * multiplier)
           if (!entry.flaggedBy.includes(result.name)) entry.flaggedBy.push(result.name)
         }
       }
@@ -106,7 +109,7 @@ function computeSentenceWeights(
         const match = sentences.find(sen => sen.includes(s.text.trim()) || s.text.includes(sen.trim()))
         if (match) {
           const entry = scoreMap.get(match)!
-          entry.weight += Math.round(s.ai_probability)
+          entry.weight += Math.round(s.ai_probability * multiplier)
           if (!entry.flaggedBy.includes(result.name)) entry.flaggedBy.push(result.name)
         }
       }
@@ -116,7 +119,7 @@ function computeSentenceWeights(
       const match = sentences.find(s => s.includes(sg.original_phrase))
       if (match) {
         const entry = scoreMap.get(match)!
-        entry.weight += 40
+        entry.weight += Math.round(40 * multiplier)
         if (!entry.flaggedBy.includes(result.name)) entry.flaggedBy.push(result.name)
       }
     }
